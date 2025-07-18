@@ -75,7 +75,7 @@ npm install
 ```bash
 dfx start --clean --background
 dfx deploy
-npm run dev
+npm start
 ```
 
 ## 📝 **Basic Flow for Users**
@@ -87,9 +87,9 @@ npm run dev
 
 ## 📌 **Roadmap**
 
-* [x] Basic Internet Identity Login
-* [x] Quiz & Certificate Claim
-* [x] Simple NFT Minting (DIP721-like)
+* [ ] Basic Internet Identity Login
+* [ ] Quiz & Certificate Claim
+* [ ] Simple NFT Minting (DIP721-like)
 * [ ] Token reward integration (DIP20)
 * [ ] Leaderboard & Gamification
 * [ ] Integration with external EduTech platforms
