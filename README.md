@@ -1,59 +1,103 @@
-# `eduverse`
+# **EduVerse**
 
-Welcome to your new `eduverse` project and to the Internet Computer development community. By default, creating a new project adds this README and some template files to your project directory. You can edit these template files to customize your project and to include your own code to speed up the development cycle.
+### *Decentralized EduTech with NFT Certificates on ICP*
 
-To get started, you might want to explore the project directory structure and the default configuration file. Working with this project in your development environment will not affect any production deployment or identity tokens.
+![EduVerse Banner](https://dummyimage.com/1200x200/002658/ffffff\&text=EduVerse+-+Decentralized+EduTech)
 
-To learn more before you start working with `eduverse`, see the following documentation available online:
+## 📌 **Overview**
 
-- [Quick Start](https://internetcomputer.org/docs/current/developer-docs/setup/deploy-locally)
-- [SDK Developer Tools](https://internetcomputer.org/docs/current/developer-docs/setup/install)
-- [Motoko Programming Language Guide](https://internetcomputer.org/docs/current/motoko/main/motoko)
-- [Motoko Language Quick Reference](https://internetcomputer.org/docs/current/motoko/main/language-manual)
+**EduVerse** is a decentralized EduTech platform that rewards users for learning. Every completed course and quiz is recorded on the **Internet Computer (ICP)** blockchain, and users can **claim verifiable NFT certificates** stored directly in their wallet.
 
-If you want to start working on your project right away, you might want to try the following commands:
+## 🚀 **Key Features**
 
-```bash
-cd eduverse/
-dfx help
-dfx canister --help
+✅ **Decentralized Learning Record** – Certificates are NFTs stored on ICP blockchain.
+✅ **Internet Identity Login** – Secure, passwordless authentication via **Internet Identity (II)**.
+✅ **Interactive Learning & Quiz** – Complete quizzes to unlock certificates.
+✅ **Verifiable Credential** – Certificates are **tamper-proof** and tied to the learner's **Principal ID**.
+✅ *(Optional Future)* Tokenized reward system to motivate learners.
+
+## 🏗 **System Architecture**
+
+```
+User (Internet Identity)
+   │ Login
+   ▼
+Frontend React (Learning & Quiz)
+   │ Claim Certificate (if pass)
+   ▼
+Canister Motoko
+   │ Mint NFT Certificate
+   ▼
+ICP Blockchain
+   │ NFT stored in user Principal
+   ▼
+Frontend Dashboard
+   └─ Display user-owned certificates
 ```
 
-## Running the project locally
+## 📂 **Project Structure**
 
-If you want to test your project locally, you can use the following commands:
+```
+EduVerse/
+├── src/
+│   ├── eduverse_backend/   # Motoko canister (NFT certificate logic)
+│   └── edu_versefrontend/  # React frontend (learning, quiz, dashboard)
+├── README.md
+└── dfx.json                # ICP project configuration
+```
+
+## 🔧 **Tech Stack**
+
+* **Frontend:** React + TailwindCSS
+* **Backend:** Motoko (Canister)
+* **Blockchain:** Internet Computer Protocol (ICP)
+* **Authentication:** Internet Identity (II)
+* **NFT Standard:** DIP721
+
+## 🛠 **Installation & Setup**
+
+### 1. **Clone the Repository**
 
 ```bash
-# Starts the replica, running in the background
-dfx start --background
+git clone https://github.com/zdnemz/EduVerse.git
+cd EduVerse
+```
 
-# Deploys your canisters to the replica and generates your candid interface
+### 2. **Install DFX & Dependencies**
+
+```bash
+sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+npm install
+```
+
+### 3. **Start Local Development**
+
+```bash
+dfx start --clean --background
 dfx deploy
+npm run dev
 ```
 
-Once the job completes, your application will be available at `http://localhost:4943?canisterId={asset_canister_id}`.
+## 📝 **Basic Flow for Users**
 
-If you have made changes to your backend canister, you can generate a new candid interface with
+1. **Login** via Internet Identity → system generates **Principal ID**.
+2. **Learn & Take Quiz** → complete the course.
+3. **Claim NFT Certificate** → after passing, the certificate is minted and stored on ICP.
+4. **View Dashboard** → see all owned NFT certificates in your wallet.
 
-```bash
-npm run generate
-```
+## 📌 **Roadmap**
 
-at any time. This is recommended before starting the frontend development server, and will be run automatically any time you run `dfx deploy`.
+* [x] Basic Internet Identity Login
+* [x] Quiz & Certificate Claim
+* [x] Simple NFT Minting (DIP721-like)
+* [ ] Token reward integration (DIP20)
+* [ ] Leaderboard & Gamification
+* [ ] Integration with external EduTech platforms
 
-If you are making frontend changes, you can start a development server with
+## 📄 **License**
 
-```bash
-npm start
-```
+MIT License – Free to use and modify for educational purposes.
 
-Which will start a server at `http://localhost:8080`, proxying API requests to the replica at port 4943.
+## 🎤 **Pitch Statement**
 
-### Note on frontend environment variables
-
-If you are hosting frontend code somewhere without using DFX, you may need to make one of the following adjustments to ensure your project does not fetch the root key in production:
-
-- set`DFX_NETWORK` to `ic` if you are using Webpack
-- use your own preferred method to replace `process.env.DFX_NETWORK` in the autogenerated declarations
-  - Setting `canisters -> {asset_canister_id} -> declarations -> env_override to a string` in `dfx.json` will replace `process.env.DFX_NETWORK` with the string in the autogenerated declarations
-- Write your own `createActor` constructor
+*"EduVerse brings a new way of learning where every skill you gain is **yours forever** – recorded on blockchain as a **verifiable NFT certificate**. No more fake credentials, no more lost certificates."*
