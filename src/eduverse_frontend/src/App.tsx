@@ -7,7 +7,6 @@ export default function App() {
       <Routes>
         {/* Root Routes */}
         <Route path="/" element={<Home />} />
-        
       </Routes>
     </Router>
   );
