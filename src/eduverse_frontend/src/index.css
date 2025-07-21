@@ -42,7 +42,7 @@ h2 {
 }
 
 h3 {
-  @apply text-lg md:text-xl;
+  @apply text-lg md:text-xl lg:text-2xl;
 }
 
 @utility text-muted {

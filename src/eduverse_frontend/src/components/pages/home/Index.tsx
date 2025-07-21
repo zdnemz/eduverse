@@ -3,6 +3,7 @@ import Navbar from '@/components/Navbar';
 import Hero from './Hero';
 import { RefProvider } from '@/contexts/RefContext';
 import ValueProposition from './ValueProposition';
+import HowItWorks from './HowItWorks';
 
 export default function Home() {
   return (
@@ -10,6 +11,7 @@ export default function Home() {
       <RefProvider>
         <Hero />
         <ValueProposition />
+        <HowItWorks />
       </RefProvider>
     </RootLayout>
   );
