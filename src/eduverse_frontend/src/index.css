@@ -32,3 +32,19 @@
   --depth: 1;
   --noise: 1;
 }
+
+h1 {
+  @apply text-3xl font-bold md:text-4xl lg:text-5xl;
+}
+
+h2 {
+  @apply text-2xl font-bold md:text-3xl lg:text-4xl;
+}
+
+h3 {
+  @apply text-lg md:text-xl;
+}
+
+@utility text-muted {
+  @apply text-base-content/70;
+}

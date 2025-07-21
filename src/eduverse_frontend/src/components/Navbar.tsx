@@ -5,6 +5,10 @@ import { cn } from '@/libs/utils';
 import { useScroll } from 'framer-motion';
 import InternetComputer from '@/assets/icons/InternetComputer';
 import EduVerse from '@/assets/icons/EduVerse';
+import { Link } from 'react-router-dom';
+
+// dummy variable
+const isAuth = true;
 
 export default function Navbar() {
   const { scrollYProgress } = useScroll();
@@ -25,16 +29,32 @@ export default function Navbar() {
       )}
     >
       {/* Logo */}
-      <div className="flex items-center gap-2">
-        <EduVerse color="oklch(90% 0.058 230.902)" className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">EduVerse</h1>
+      <div>
+        <Link to="/" className="flex items-center gap-2">
+          <EduVerse color="oklch(90% 0.058 230.902)" className="h-6 w-6" />
+          <span className="text-2xl font-bold">EduVerse</span>
+        </Link>
       </div>
 
-      {/* Nav Button */}
-      <button className="btn btn-accent flex items-center gap-2 rounded-lg shadow-md">
-        <InternetComputer className="h-6 w-6" />
-        <span className="font-semibold">Sign In with II</span>
-      </button>
+      {/* Auth Button */}
+      {!isAuth ? (
+        <Link
+          to="/"
+          type="button"
+          className="btn btn-accent flex items-center gap-2 rounded-lg shadow-md"
+        >
+          <InternetComputer className="h-6 w-6" />
+          <span className="font-semibold">Get Started</span>
+        </Link>
+      ) : (
+        <Link
+          to="/dashboard"
+          type="button"
+          className="btn btn-accent flex items-center gap-2 rounded-lg shadow-md"
+        >
+          <span className="font-semibold">Dashboard</span>
+        </Link>
+      )}
     </header>
   );
 }

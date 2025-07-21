@@ -1,6 +1,6 @@
-"use client";
-import React, { createContext, useContext, useRef, RefObject } from "react";
-import { scrollToRefHelper, focusRefHelper, getRefHelper } from "@/libs/refs";
+'use client';
+import React, { createContext, useContext, useRef, RefObject } from 'react';
+import { scrollToRefHelper, focusRefHelper, getRefHelper } from '@/libs/refs';
 
 type DynamicRefs = Record<string, RefObject<HTMLElement | null>>;
 
@@ -42,7 +42,7 @@ export function RefProvider({ children }: { children: React.ReactNode }) {
 export function useRefContext() {
   const context = useContext(RefContext);
   if (!context) {
-    throw new Error("useRefContext must be used within RefProvider");
+    throw new Error('useRefContext must be used within RefProvider');
   }
   return context;
 }
