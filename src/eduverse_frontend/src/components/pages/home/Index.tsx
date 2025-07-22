@@ -1,10 +1,12 @@
 import RootLayout from '@/components/layouts/RootLayout';
 import Navbar from '@/components/Navbar';
-import Hero from './Hero';
 import { RefProvider } from '@/contexts/RefContext';
+import { Helmet } from 'react-helmet-async';
+
+import Hero from './Hero';
 import ValueProposition from './ValueProposition';
 import HowItWorks from './HowItWorks';
-import { Helmet } from 'react-helmet-async';
+import Testimonials from './Testimonials';
 
 export default function Home() {
   return (
@@ -25,6 +27,7 @@ export default function Home() {
           <Hero />
           <ValueProposition />
           <HowItWorks />
+          <Testimonials />
         </RefProvider>
       </RootLayout>
     </>
