@@ -1,18 +1,18 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { cn } from '@/libs/utils';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useScroll } from 'framer-motion';
-import InternetComputer from '@/assets/icons/InternetComputer';
-import EduVerse from '@/assets/icons/EduVerse';
+import { cn } from '@/libs/utils';
 import { Link } from 'react-router-dom';
 
-// dummy variable
-const isAuth = true;
+import InternetComputer from '@/assets/icons/InternetComputer';
+import EduVerse from '@/assets/icons/EduVerse';
+import Modal from './ui/modal';
 
 export default function Navbar() {
   const { scrollYProgress } = useScroll();
   const [scrolled, setScrolled] = useState(false);
+
+  const { login, logout, isAuthenticated } = useAuth();
 
   useEffect(() => {
     const unsubscribe = scrollYProgress.on('change', (v) => {
@@ -37,23 +37,21 @@ export default function Navbar() {
       </div>
 
       {/* Auth Button */}
-      {!isAuth ? (
-        <Link
-          to="/"
-          type="button"
+      {!isAuthenticated ? (
+        <button
+          onClick={login}
           className="btn btn-accent flex items-center gap-2 rounded-lg shadow-md"
         >
           <InternetComputer className="h-6 w-6" />
           <span className="font-semibold">Get Started</span>
-        </Link>
+        </button>
       ) : (
-        <Link
-          to="/dashboard"
-          type="button"
+        <button
+          onClick={logout}
           className="btn btn-accent flex items-center gap-2 rounded-lg shadow-md"
         >
-          <span className="font-semibold">Dashboard</span>
-        </Link>
+          <span className="font-semibold">Logout</span>
+        </button>
       )}
     </header>
   );

@@ -35,9 +35,9 @@ const recentCourses = [
 
 export default function Learning() {
   return (
-    <section>
+    <section className="h-full">
       <motion.div
-        className="card bg-base-300/70 shadow-primary space-y-6 p-6 shadow"
+        className="card bg-base-300/70 shadow-primary h-full space-y-6 p-6 shadow"
         transition={{ ...MOTION_TRANSITION, delay: 0.8 }}
         initial={{
           opacity: 0,
@@ -66,7 +66,7 @@ export default function Learning() {
           {recentCourses.map((course) => (
             <div
               key={course.id}
-              className="card border-base-300 bg-base-200 h-88 cursor-pointer border shadow"
+              className="card border-base-300 bg-base-200 h-90 cursor-pointer border shadow"
             >
               <figure className="relative">
                 <img

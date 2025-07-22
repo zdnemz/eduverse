@@ -1,8 +1,12 @@
 import { ChevronRightCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';
+import { useAuth } from '@/contexts/AuthContext';
+import { formatPrincipal } from '@/libs/utils';
 
 export default function Welcome() {
+  const { principal } = useAuth();
+
   return (
     <section>
       <motion.div
@@ -36,7 +40,10 @@ export default function Welcome() {
               <h3 className="text-xl">
                 Welcome Back, <span className="text-accent font-semibold">User</span> !
               </h3>
-              <p className="text-muted text-xs">#aaaa-bbbb-cccc-dddd</p>
+              <p className="text-muted text-xs">
+                {'# '}
+                {formatPrincipal(principal || '')}
+              </p>
             </div>
           </div>
           <div>

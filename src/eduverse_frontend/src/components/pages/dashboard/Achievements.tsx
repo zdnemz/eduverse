@@ -34,9 +34,9 @@ const achievements = [
 
 export default function Achievements() {
   return (
-    <section>
+    <section className="h-full">
       <motion.div
-        className="card bg-base-300/70 shadow-primary space-y-6 p-6 shadow"
+        className="card bg-base-300/70 shadow-primary h-full space-y-6 p-6 shadow"
         transition={{ ...MOTION_TRANSITION, delay: 0.6 }}
         initial={{
           opacity: 0,

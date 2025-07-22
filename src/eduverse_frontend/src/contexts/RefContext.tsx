@@ -1,23 +1,22 @@
-'use client';
-import React, { createContext, useContext, useRef, RefObject } from 'react';
+import * as React from 'react';
 import { scrollToRefHelper, focusRefHelper, getRefHelper } from '@/libs/refs';
 
-type DynamicRefs = Record<string, RefObject<HTMLElement | null>>;
+type DynamicRefs = Record<string, React.RefObject<HTMLElement | null>>;
 
 export type RefContextType = {
   refs: DynamicRefs;
-  registerRef: (key: string) => RefObject<HTMLElement | null>;
+  registerRef: (key: string) => React.RefObject<HTMLElement | null>;
   scrollToRef: (key: string) => void;
   focusRef: (key: string) => void;
-  getRef: (key: string) => RefObject<HTMLElement | null> | null;
+  getRef: (key: string) => React.RefObject<HTMLElement | null> | null;
 };
 
-const RefContext = createContext<RefContextType | null>(null);
+const RefContext = React.createContext<RefContextType | null>(null);
 
 export function RefProvider({ children }: { children: React.ReactNode }) {
-  const refs = useRef<DynamicRefs>({});
+  const refs = React.useRef<DynamicRefs>({});
 
-  function registerRef(key: string): RefObject<HTMLElement | null> {
+  function registerRef(key: string): React.RefObject<HTMLElement | null> {
     if (!refs.current[key]) {
       refs.current[key] = React.createRef<HTMLElement>();
     }
@@ -40,7 +39,7 @@ export function RefProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useRefContext() {
-  const context = useContext(RefContext);
+  const context = React.useContext(RefContext);
   if (!context) {
     throw new Error('useRefContext must be used within RefProvider');
   }
