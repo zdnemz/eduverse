@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Home from '@/components/pages/home';
+import Home from 'pages/home';
+import Dashboard from 'pages/dashboard';
 
 export default function App() {
   return (
@@ -7,6 +8,7 @@ export default function App() {
       <Routes>
         {/* Root Routes */}
         <Route path="/" element={<Home />} />
+        <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </Router>
   );
