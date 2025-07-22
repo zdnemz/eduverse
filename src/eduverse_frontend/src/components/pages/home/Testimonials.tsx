@@ -44,12 +44,12 @@ export default function Testimonials() {
         >
           {testimonials.map((item, index) => (
             <div key={index} className="card bg-base-300/70 shadow-primary h-52 w-60 shadow">
-              <div className="card-body flex w-full flex-col justify-between">
+              <div className="flex h-full w-full flex-col justify-between p-6">
                 <div className="flex items-start justify-between">
                   <Quote className="text-primary/30 h-8 w-8" />
                 </div>
                 <p className="italic">{item.text}</p>
-                <h3 className="mt-2 text-right text-sm font-semibold">{item.name}</h3>
+                <p className="mt-2 text-right text-sm font-semibold">{item.name}</p>
               </div>
             </div>
           ))}

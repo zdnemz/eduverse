@@ -14,7 +14,7 @@ export default function RootLayout({ children, className, header, footer }: Root
   return (
     <>
       <header className={cn('fixed z-50 w-full', DEFAULT_PADDING)}>{header}</header>
-      <main className={cn('*:py-12', className, DEFAULT_PADDING)}>{children}</main>
+      <main className={cn('relative *:py-12', className, DEFAULT_PADDING)}>{children}</main>
       <footer className={cn(DEFAULT_PADDING)}>{footer}</footer>
     </>
   );

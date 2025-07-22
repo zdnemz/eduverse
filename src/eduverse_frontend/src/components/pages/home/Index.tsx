@@ -8,6 +8,7 @@ import ValueProposition from './ValueProposition';
 import HowItWorks from './HowItWorks';
 import Testimonials from './Testimonials';
 import CTA from './CTA';
+import Footer from '@/components/Footer';
 
 export default function Home() {
   return (
@@ -23,7 +24,7 @@ export default function Home() {
           content="EduVerse, decentralized education, blockchain learning, NFT certificates, ICP education platform, learn to earn"
         />
       </Helmet>
-      <RootLayout header={<Navbar />}>
+      <RootLayout header={<Navbar />} footer={<Footer />}>
         <RefProvider>
           <Hero />
           <ValueProposition />

@@ -42,7 +42,7 @@ h2 {
 }
 
 h3 {
-  @apply text-lg md:text-xl lg:text-2xl;
+  @apply text-lg md:text-xl;
 }
 
 @utility text-muted {
@@ -52,7 +52,6 @@ h3 {
 @theme inline {
   --animate-marquee: marquee var(--duration) infinite linear;
   --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
-
 
   @keyframes marquee {
     from {
