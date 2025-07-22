@@ -7,6 +7,7 @@ import Hero from './Hero';
 import ValueProposition from './ValueProposition';
 import HowItWorks from './HowItWorks';
 import Testimonials from './Testimonials';
+import CTA from './CTA';
 
 export default function Home() {
   return (
@@ -28,6 +29,7 @@ export default function Home() {
           <ValueProposition />
           <HowItWorks />
           <Testimonials />
+          <CTA />
         </RefProvider>
       </RootLayout>
     </>
