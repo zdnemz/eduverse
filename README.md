@@ -87,7 +87,7 @@ npm start
 
 ## 📌 **Roadmap**
 
-* [ ] Basic Internet Identity Login
+* [x] Basic Internet Identity Login
 * [ ] Quiz & Certificate Claim
 * [ ] Simple NFT Minting (DIP721-like)
 * [ ] Token reward integration (DIP20)
