@@ -23,7 +23,7 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:4943',
         changeOrigin: true,
-        ws: false
+        ws: false,
       },
     },
   },
@@ -38,6 +38,10 @@ export default defineConfig({
       {
         find: '@',
         replacement: fileURLToPath(new URL('./src', import.meta.url)),
+      },
+      {
+        find: 'pages',
+        replacement: fileURLToPath(new URL('./src/components/pages', import.meta.url)),
       },
       {
         find: 'declarations',

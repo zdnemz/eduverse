@@ -1,1 +1,72 @@
 @import 'tailwindcss';
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: 'default';
+  --color-base-100: oklch(37% 0.146 265.522);
+  --color-base-200: oklch(28% 0.091 267.935);
+  --color-base-300: oklch(22% 0.091 267.935);
+  --color-base-content: oklch(90% 0.058 230.902);
+  --color-primary: oklch(85.661% 0.144 198.645);
+  --color-primary-content: oklch(40.124% 0.068 197.603);
+  --color-secondary: oklch(60.682% 0.108 309.782);
+  --color-secondary-content: oklch(96% 0.016 293.756);
+  --color-accent: oklch(85% 0.199 91.936);
+  --color-accent-content: oklch(18.685% 0.02 94.555);
+  --color-neutral: oklch(27% 0.146 265.522);
+  --color-neutral-content: oklch(80% 0.146 265.522);
+  --color-info: oklch(54.615% 0.215 262.88);
+  --color-info-content: oklch(90.923% 0.043 262.88);
+  --color-success: oklch(62.705% 0.169 149.213);
+  --color-success-content: oklch(12.541% 0.033 149.213);
+  --color-warning: oklch(66.584% 0.157 58.318);
+  --color-warning-content: oklch(27% 0.077 45.635);
+  --color-error: oklch(73.95% 0.19 27.33);
+  --color-error-content: oklch(14.79% 0.038 27.33);
+  --radius-selector: 1rem;
+  --radius-field: 0.5rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 1;
+}
+
+h1 {
+  @apply text-3xl font-bold md:text-4xl lg:text-5xl;
+}
+
+h2 {
+  @apply text-2xl font-bold md:text-3xl lg:text-4xl;
+}
+
+h3 {
+  @apply text-lg md:text-xl;
+}
+
+@utility text-muted {
+  @apply text-base-content/70;
+}
+
+@theme inline {
+  --animate-marquee: marquee var(--duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(-100% - var(--gap)));
+    }
+  }
+  @keyframes marquee-vertical {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(calc(-100% - var(--gap)));
+    }
+  }
+}
