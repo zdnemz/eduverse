@@ -46,8 +46,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setPrincipal(principalId);
     setIsAuthenticated(true);
     setLoading(false);
-
-    navigate('/dashboard');
   }
 
   async function login() {
@@ -60,6 +58,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       onSuccess: async () => {
         if (authClient) {
           await handleLogin(authClient);
+          navigate('/dashboard');
         }
       },
     });
