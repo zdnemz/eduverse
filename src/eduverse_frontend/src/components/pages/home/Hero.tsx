@@ -3,9 +3,11 @@ import { useRefContext } from '@/contexts/RefContext';
 import { MOTION_TRANSITION } from '@/constants/motion';
 import { cn } from '@/libs/utils';
 import { BackgroundWithDots } from '@/components/Background';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Hero() {
   const { scrollToRef } = useRefContext();
+  const { login } = useAuth();
 
   return (
     <section className="relative flex min-h-screen w-full items-center justify-center">
@@ -52,7 +54,9 @@ export default function Hero() {
           viewport={{ once: true, amount: 0.2 }}
           className="flex gap-x-4"
         >
-          <button className="btn btn-primary rounded-lg">{'Start Learning Now'}</button>
+          <button onClick={login} className="btn btn-primary rounded-lg">
+            {'Start Learning Now'}
+          </button>
           <button
             onClick={() => scrollToRef('howItWorksSection')}
             className="btn btn-secondary rounded-lg"

@@ -3,8 +3,22 @@ import { MOTION_TRANSITION } from '@/constants/motion';
 import { cn } from '@/libs/utils';
 import { motion } from 'framer-motion';
 import { ArrowRightCircle, PlayCircle } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function CTA() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleStartLearning = async () => {
+    try {
+      await login();
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  };
+
   return (
     <section className="relative flex min-h-screen w-full items-center">
       <BackgroundWithDots />
@@ -49,11 +63,14 @@ export default function CTA() {
           viewport={{ once: true, amount: 0.2 }}
           className="flex gap-x-4"
         >
-          <button className="btn btn-primary rounded-lg">
+          <button
+            className="btn btn-primary flex items-center gap-2 rounded-lg"
+            onClick={handleStartLearning}
+          >
             {'Start Learning'}
             <ArrowRightCircle />
           </button>
-          <button className="btn btn-secondary rounded-lg">
+          <button className="btn btn-secondary flex items-center gap-2 rounded-lg">
             {'Explore The Demo'}
             <PlayCircle />
           </button>

@@ -23,9 +23,7 @@ export default function RootLayout({
   background,
   protected: isProtected = false,
 }: RootLayoutProps) {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) return <Loading />;
+  const { isAuthenticated } = useAuth();
 
   if (isProtected) {
     if (!isAuthenticated) return <Navigate to="/" replace />;
