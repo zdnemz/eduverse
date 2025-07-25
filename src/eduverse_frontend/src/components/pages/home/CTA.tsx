@@ -3,8 +3,8 @@ import { MOTION_TRANSITION } from '@/constants/motion';
 import { cn } from '@/libs/utils';
 import { motion } from 'framer-motion';
 import { ArrowRightCircle, PlayCircle } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext'; 
-import { useNavigate } from 'react-router-dom'; 
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function CTA() {
   const { login } = useAuth();
@@ -12,8 +12,8 @@ export default function CTA() {
 
   const handleStartLearning = async () => {
     try {
-      await login(); 
-      navigate('/dashboard'); 
+      await login();
+      navigate('/dashboard');
     } catch (error) {
       console.error('Login failed:', error);
     }
