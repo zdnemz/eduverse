@@ -2,9 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Home from 'pages/home/Index';
 import { useAuth } from '@/contexts/AuthContext';
 import Dashboard from 'pages/dashboard';
-import PrivateRoute from './routes/PrivateRoute';
+import ProfileSetup from 'pages/profile/setup';
+import Certificate from 'pages/certificate';
 import LoadingScreen from '@/components/Loading';
-import CertificatePage from 'pages/certificate';
 
 export default function App() {
   const { loading, principal } = useAuth();
@@ -17,22 +17,9 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={principal ? <Navigate to="/dashboard" replace /> : <Home />} />
-        <Route
-          path="/dashboard"
-          element={
-            <PrivateRoute>
-              <Dashboard />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/certificate"
-          element={
-            <PrivateRoute>
-              <CertificatePage />
-            </PrivateRoute>
-          }
-        />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/certificate" element={<Certificate />} />
+        <Route path="/profile/setup" element={<ProfileSetup />} />
       </Routes>
     </>
   );

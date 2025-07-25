@@ -7,7 +7,7 @@ import { HttpAgent, Actor } from '@dfinity/agent';
 import {
   idlFactory as backendIdl,
   canisterId as backendCanisterId,
-} from '../../../declarations/eduverse_backend';
+} from 'declarations/eduverse_backend';
 
 interface User {
   name: string;
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const identity = authClient.getIdentity();
         const authedAgent = new HttpAgent({
           identity,
-          host: isLocal ? 'http://127.0.0.1:4943' : 'https://icp0.io',
+          host: isLocal ? 'http://localhost:4943' : 'https://icp0.io',
         });
 
         if (isLocal) {
