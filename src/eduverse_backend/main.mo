@@ -11,7 +11,7 @@ import Iter "mo:base/Iter";
 // import Debug "mo:base/Debug";
 
 
-actor CertificateManager {
+persistent actor CertificateManager {
     // ===== DATA TYPE =====
     public type User = {
         name : Text;
@@ -27,12 +27,12 @@ actor CertificateManager {
     };
 
     // ===== STABLE STORAGE =====
-    stable var nextCertificateId : Nat = 0;
-    stable var certificates : Trie.Trie<Principal, [Certificate]> = Trie.empty();
-    stable var userEntries : [(Principal, User)] = [];
+    var nextCertificateId : Nat = 0;
+    var certificates : Trie.Trie<Principal, [Certificate]> = Trie.empty();
+    var userEntries : [(Principal, User)] = [];
 
     // ===== IN-MEMORY STORAGE =====
-    private var users = HashMap.fromIter<Principal, User>(
+    private transient var users = HashMap.fromIter<Principal, User>(
         userEntries.vals(), 
         1, 
         Principal.equal, 

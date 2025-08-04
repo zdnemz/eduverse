@@ -4,9 +4,9 @@ import HashMap "mo:base/HashMap";
 import Text "mo:base/Text";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
-import Hash "mo:base/Hash";
+import Nat32 "mo:base/Nat32";
 
-actor {
+persistent actor {
 
     type Modul = {
         id : Nat;
@@ -32,7 +32,7 @@ actor {
         lastVisited : Nat;
     };
 
-    stable let modulList : [Modul] = [
+    let modulList : [Modul] = [
         {
             id = 0;
             title = "Pengenalan Motoko";
@@ -53,9 +53,21 @@ actor {
         },
     ];
 
-    stable var userProgressEntries : [(Principal, ([(Nat, ModulStatus)], Nat))] = [];
+    // Custom hash function for Nat values
+    func natHash(n : Nat) : Nat32 {
+        var hash : Nat32 = 0;
+        var temp = n;
+        while (temp > 0) {
+            hash := hash * 31 + Nat32.fromNat(temp % 256);
+            temp := temp / 256;
+        };
+        hash;
+    };
 
-    var userProgressMap = HashMap.HashMap<Principal, UserProgress>(10, Principal.equal, Principal.hash);
+    var userProgressEntries : [(Principal, ([(Nat, ModulStatus)], Nat))] = [];
+
+    // Explicitly declare as transient and use proper hash function
+    transient var userProgressMap = HashMap.HashMap<Principal, UserProgress>(10, Principal.equal, Principal.hash);
 
     system func preupgrade() {
         userProgressEntries := Iter.toArray(
@@ -77,7 +89,8 @@ actor {
     system func postupgrade() {
         userProgressMap := HashMap.HashMap<Principal, UserProgress>(10, Principal.equal, Principal.hash);
         for ((principal, (modulStatusArr, lastVisited)) in userProgressEntries.vals()) {
-            let modulStatusMap = HashMap.HashMap<Nat, ModulStatus>(10, Nat.equal, Hash.hash);
+            // Use custom hash function for Nat values
+            let modulStatusMap = HashMap.HashMap<Nat, ModulStatus>(10, Nat.equal, natHash);
             for ((modulId, status) in modulStatusArr.vals()) {
                 modulStatusMap.put(modulId, status);
             };
@@ -114,7 +127,8 @@ actor {
         let progress = switch (userProgressMap.get(user)) {
             case null {
                 {
-                    modulStatus = HashMap.HashMap<Nat, ModulStatus>(10, Nat.equal, Hash.hash);
+                    // Use custom hash function for Nat values
+                    modulStatus = HashMap.HashMap<Nat, ModulStatus>(10, Nat.equal, natHash);
                     lastVisited = modulId;
                 };
             };

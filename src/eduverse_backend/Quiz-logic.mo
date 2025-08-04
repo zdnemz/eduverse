@@ -1,7 +1,7 @@
 import Text "mo:base/Text";
 import Array "mo:base/Array";
 
-actor Quiz {
+persistent actor Quiz {
 
   type Question = {
     text: Text;
@@ -9,7 +9,7 @@ actor Quiz {
     answer: Text; // e.g., "A"
   };
 
-  let questions : [Question] = [
+  private transient var questions : [Question] = [
     {
       text = "Apa output dari: let a = 5; let b = 3; a + b?";
       options = ["A. 8", "B. 53", "C. 35", "D. Error"];
