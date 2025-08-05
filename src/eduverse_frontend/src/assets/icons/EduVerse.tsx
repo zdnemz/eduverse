@@ -1,6 +1,7 @@
 import { IconProps } from '@/types/icon';
+import React from 'react';
 
-export default function EduVerse({ className, color, ...props }: IconProps) {
+function EduVerse({ className, color, ...props }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -33,3 +34,5 @@ export default function EduVerse({ className, color, ...props }: IconProps) {
     </svg>
   );
 }
+
+export default React.memo(EduVerse);

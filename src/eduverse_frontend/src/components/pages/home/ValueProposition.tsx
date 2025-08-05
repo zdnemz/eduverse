@@ -1,5 +1,3 @@
-'use client';
-
 import { BadgeCheck, Infinity, ShieldCheck, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';

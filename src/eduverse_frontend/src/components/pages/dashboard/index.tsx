@@ -3,15 +3,16 @@ import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import RootLayout from '@/components/layouts/RootLayout';
 
+import { withAuth } from '@/hoc/withAuth';
+
 import Welcome from './Welcome';
 import Stats from './Stats';
 import Achievements from './Achievements';
 import Learning from './Learning';
 
-export default function Dashboard() {
+export default withAuth(function () {
   return (
     <RootLayout
-      protected
       className="min-h-screen w-full *:py-6 [&>*:first-child]:pt-24 [&>*:last-child]:pb-24"
       header={<Navbar />}
       footer={<Footer />}
@@ -28,4 +29,4 @@ export default function Dashboard() {
       </div>
     </RootLayout>
   );
-}
+});

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { BookOpen, LogIn, Share2, Stamp } from 'lucide-react';
 import { useRefContext } from '@/contexts/RefContext';
 import { BackgroundGridBlob } from '@/components/Background';
-import { useAuth } from '@/contexts/AuthContext';
+import { LoginButton } from '@/components/Auth';
 
 const steps = [
   {
@@ -32,7 +32,6 @@ const steps = [
 export default function HowItWorks() {
   const { registerRef } = useRefContext();
   const howItWorksSectionRef = registerRef('howItWorksSection');
-  const { login } = useAuth();
 
   return (
     <section
@@ -45,9 +44,7 @@ export default function HowItWorks() {
       <div className="mx-auto max-w-2xl space-y-4 text-center lg:mx-0 lg:text-start">
         <h2>How EduVerse Works</h2>
         <p className="text-muted text-sm">From learning to earning—only 4 simple steps.</p>
-        <button onClick={login} className="btn btn-primary rounded-lg">
-          Get Started Now
-        </button>
+        <LoginButton className="btn-primary">Get Started Now</LoginButton>
       </div>
 
       {/* Steps */}

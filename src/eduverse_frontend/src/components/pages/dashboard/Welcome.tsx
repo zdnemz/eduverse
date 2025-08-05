@@ -1,72 +1,50 @@
 import { ChevronRightCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';
-import { useAuth } from '@/contexts/AuthContext';
-import { formatPrincipal } from '@/libs/utils';
-import { useEffect, useState } from 'react';
-import Loading from '@/components/Loading';
+import { formatPrincipal } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { createActorWithRetry, callWithRetry } from '@/libs/auth';
-
-type User = {
-  name: string;
-  email?: string | string[];
-  completedCourses: string[];
-};
+import { useActor, useAuthActions, useAuthUser, usePrincipal } from '@/stores/auth-store';
+import { useEffect } from 'react';
+import { getUser as getCurrentUser } from '@/services/auth-service';
+import { useLoading } from '@/hooks/useLoading';
+import { toast } from 'sonner';
 
 export default function Welcome() {
-  const { principal, identity } = useAuth();
-  const [user, setUser] = useState<User | null>(null);
-  const [loadingUser, setLoadingUser] = useState(true);
+  const user = useAuthUser();
+  const principal = usePrincipal();
+  const actor = useActor();
+
+  const { startLoading, stopLoading } = useLoading('welcome-dashboard');
+
+  const { setUser } = useAuthActions();
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkUserProfile = async () => {
-      if (!principal || !identity) {
-        setLoadingUser(false);
-        return;
-      }
+    if (user) return;
 
-      if (principal === '2vxsx-fae') {
-        console.warn('User is anonymous');
-        setLoadingUser(false);
-        return;
-      }
-
+    async function getUser() {
       try {
-        const actor = await createActorWithRetry(identity);
+        startLoading();
 
-        const result = await callWithRetry(() => actor.getMyProfile());
-        const userData = Array.isArray(result) ? result[0] : result;
+        if (!actor) throw new Error('No actor available');
 
-        if (
-          !userData ||
-          !userData.name ||
-          userData.name.trim() === '' ||
-          !userData.email ||
-          (Array.isArray(userData.email) && userData.email.length === 0) ||
-          (Array.isArray(userData.email) && userData.email[0].trim() === '') ||
-          (typeof userData.email === 'string' && userData.email.trim() === '')
-        ) {
-          navigate('/profile/setup');
-          return;
-        }
+        const currentUser = await getCurrentUser(actor);
+        if (!currentUser) throw new Error('Failed to get user data');
 
-        setUser(userData);
-      } catch (error) {
-        console.error('Failed to retrieve user:', error);
-        navigate('/profile/setup');
+        setUser(currentUser);
+      } catch (err) {
+        const message = (err as Error).message;
+        console.error('Get user data :', message);
+
+        toast.error(message || 'Something went wrong');
+      } finally {
+        stopLoading();
       }
+    }
 
-      setLoadingUser(false);
-    };
-
-    checkUserProfile();
-  }, [principal, identity, navigate]);
-
-  if (loadingUser) return <Loading />;
-
-  if (!user) return <Loading />;
+    getUser();
+  }, []);
 
   return (
     <section>
@@ -92,17 +70,12 @@ export default function Welcome() {
             <div>
               <h3 className="text-xl">
                 Welcome Back,{' '}
-                <span className="text-accent font-semibold capitalize">{user.name.trim()}</span>
+                <span className="text-accent font-semibold capitalize">
+                  {user?.name?.trim() || 'User'}
+                </span>
               </h3>
-              <p className="text-muted text-xs">
-                {'# '}
-                {formatPrincipal(principal || '')}
-              </p>
-              {user.email && (
-                <p className="text-xs">
-                  📧 {Array.isArray(user.email) ? user.email[0] : user.email}
-                </p>
-              )}
+              <p className="text-muted text-xs"># {formatPrincipal(principal || '')}</p>
+              {user?.email && <p className="text-xs">📧 {user.email}</p>}
             </div>
           </div>
           <div>

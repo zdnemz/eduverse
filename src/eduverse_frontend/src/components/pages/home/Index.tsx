@@ -1,6 +1,6 @@
 import RootLayout from '@/components/layouts/RootLayout';
 import Navbar from '@/components/Navbar';
-import { RefProvider } from '@/contexts/RefContext';
+import { RefProvider } from '@/components/providers/ref-provider';
 import { Helmet } from 'react-helmet-async';
 
 import Hero from './Hero';

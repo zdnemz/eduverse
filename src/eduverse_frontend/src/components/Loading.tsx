@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <div className="bg-base-300 fixed inset-0 z-50 flex items-center justify-center">
+    <div className="bg-base-300 fixed inset-0 z-[999] flex items-center justify-center">
       <svg className="h-24 w-24" viewBox="0 0 240 240">
         <circle
           className="pl__ring pl__ring--a"
