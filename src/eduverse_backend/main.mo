@@ -1,142 +1,46 @@
 import Principal "mo:base/Principal";
-import HashMap "mo:base/HashMap";
-import Trie "mo:base/Trie";
-import Time "mo:base/Time";
-import Text "mo:base/Text";
-import Nat "mo:base/Nat";
-import Int "mo:base/Int";
-import Array "mo:base/Array";
 import Result "mo:base/Result";
-import Iter "mo:base/Iter";
-// import Debug "mo:base/Debug";
+import Types "./Types";
+import Certificate "./certificate/Certificate";
+import User "./user/User";
 
+persistent actor class CertificateManager() : async CertificateManager = this {
 
-persistent actor CertificateManager {
-    // ===== DATA TYPE =====
-    public type User = {
-        name : Text;
-        email : ?Text;
-        completedCourses : [Text];
-    };
+   var savedUserData: [(Principal, Types.User)] = [];
+   var savedCertificateData: [(Nat32, [Types.Certificate])] = [];
+   var savedNextCertId: Nat = 1;
 
-    public type Certificate = {
-        id : Nat;
-        courseName : Text;
-        dateIssued : Text;
-        owner : Principal;
-    };
+  transient let certificateManager = Certificate.CertificateManager();
+  transient let userManager = User.UserManager();
 
-    // ===== STABLE STORAGE =====
-    var nextCertificateId : Nat = 0;
-    var certificates : Trie.Trie<Principal, [Certificate]> = Trie.empty();
-    var userEntries : [(Principal, User)] = [];
+  public shared({ caller }) func claimCertificate(courseName: Text): async Result.Result<Types.Certificate, Text> {
+    return certificateManager.claimCertificate(caller, courseName);
+  };
 
-    // ===== IN-MEMORY STORAGE =====
-    private transient var users = HashMap.fromIter<Principal, User>(
-        userEntries.vals(), 
-        1, 
-        Principal.equal, 
-        Principal.hash
-    );
+  public query({ caller }) func getMyCertificates(): async [Types.Certificate] {
+    return certificateManager.getMyCertificates(caller);
+  };
 
-    // ===== HELPER FUNCTION =====
-    private func principalKey(p : Principal) : Trie.Key<Principal> {
-        { hash = Principal.hash(p); key = p };
-    };
+  public shared({ caller }) func updateUser(name: Text, email: ?Text): async Result.Result<Text, Text> {
+    return userManager.updateUser(caller, name, email);
+  };
 
-    private func formatTime(t : Int) : Text {
-        let seconds = t / 1_000_000_000;
-        Int.toText(seconds);
-    };
+  public query({ caller }) func getMyProfile(): async ?Types.User {
+    return userManager.getMyProfile(caller);
+  };
 
-    // ===== MAIN FUNCTION =====
-    public shared({ caller }) func claimCertificate(courseName : Text) : async Result.Result<Certificate, Text> {
-      
-        if (Principal.isAnonymous(caller)) {
-            return #err("Anonymous users cannot claim certificates");
-        };
+  system func preupgrade() {
+    let data = certificateManager.persistData();
+    savedUserData := data.users;
+    savedCertificateData := data.certificates;
+    savedNextCertId := data.nextCertId;
+  };
 
-        let newCert : Certificate = {
-            id = nextCertificateId;
-            courseName = courseName;
-            dateIssued = formatTime(Time.now());
-            owner = caller;
-        };
-
-        // Update certificates
-        let existingCerts = Trie.get(certificates, principalKey(caller), Principal.equal);
-        let updatedCerts = switch (existingCerts) {
-            case (?certs) Array.append(certs, [newCert]);
-            case null [newCert];
-        };
-        certificates := Trie.put(
-            certificates, 
-            principalKey(caller), 
-            Principal.equal, 
-            updatedCerts
-        ).0;
-        nextCertificateId += 1;
-
-        // Update user
-        let existingUser = users.get(caller);
-        let updatedUser : User = {
-            name = switch (existingUser) { case (?u) u.name; case null "Anonymous" };
-            email = switch (existingUser) { case (?u) u.email; case null null };
-            completedCourses = switch (existingUser) { 
-                case (?u) Array.append(u.completedCourses, [courseName]); 
-                case null [courseName] 
-            };
-        };
-        users.put(caller, updatedUser);
-        userEntries := Iter.toArray(users.entries());
-
-        #ok(newCert);
-    };
-
-    public query({ caller }) func getMyCertificates() : async [Certificate] {
-        switch (Trie.get(certificates, principalKey(caller), Principal.equal)) {
-            case (?certs) certs;
-            case null [];
-        }
-    };
-
-    public shared({ caller }) func updateUser(name : Text, email : ?Text) : async Result.Result<Text, Text> {
-        if (Principal.isAnonymous(caller)) {
-            return #err("Anonymous users cannot update profiles");
-        };
-
-        let existingUser = users.get(caller);
-        let updatedUser : User = {
-            name = name;
-            email = email;
-            completedCourses = switch (existingUser) {
-                case (?user) user.completedCourses;
-                case null [];
-            };
-        };
-        users.put(caller, updatedUser);
-
-        userEntries := Iter.toArray(users.entries());
-
-        #ok("Profile updated successfully");
-    };
-
-    public query({ caller }) func getMyProfile() : async ?User {
-      let userOpt = users.get(caller);   
-      return userOpt;
-    };
-
-    // ===== UPGRADE HANDLING =====
-    system func preupgrade() {
-        userEntries := Iter.toArray(users.entries());
-    };
-
-    system func postupgrade() {
-        users := HashMap.fromIter<Principal, User>(
-            userEntries.vals(),
-            1,
-            Principal.equal,
-            Principal.hash
-        );
-    };
+  system func postupgrade() {
+    certificateManager.loadData({
+      users = savedUserData;
+      certificates = savedCertificateData;
+      nextCertId = savedNextCertId;
+    });
+  };
 };

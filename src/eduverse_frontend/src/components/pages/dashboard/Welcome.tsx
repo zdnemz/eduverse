@@ -24,38 +24,38 @@ export default function Welcome() {
 
   const navigate = useNavigate();
 
-const handleUpdateUser = async () => {
-  if (!actor || !user) return toast.error('Actors are not ready');
+  const handleUpdateUser = async () => {
+    if (!actor || !user) return toast.error('Actors are not ready');
 
-  const trimmedName = nameInput.trim();
-  const trimmedEmail = emailInput.trim();
+    const trimmedName = nameInput.trim();
+    const trimmedEmail = emailInput.trim();
 
-  const nameChanged = trimmedName !== user.name;
-  const emailChanged = trimmedEmail !== user.email?.[0];
+    const nameChanged = trimmedName !== user.name;
+    const emailChanged = trimmedEmail !== user.email?.[0];
 
-  if (!nameChanged && !emailChanged) {
-    return toast.info('No data was changed.');
-  }
+    if (!nameChanged && !emailChanged) {
+      return toast.info('No data was changed.');
+    }
 
-  const updatedName = nameChanged ? trimmedName : user.name;
-  const updatedEmail: [string] = [emailChanged ? trimmedEmail : user.email?.[0] || ''];
+    const updatedName = nameChanged ? trimmedName : user.name;
+    const updatedEmail: [string] = [emailChanged ? trimmedEmail : user.email?.[0] || ''];
 
-  try {
-    setIsUpdating(true);
-    startLoading();
-    await actor.updateUser(updatedName, updatedEmail);
-    toast.success('User data updated successfully');
+    try {
+      setIsUpdating(true);
+      startLoading();
+      await actor.updateUser(updatedName, updatedEmail);
+      toast.success('User data updated successfully');
 
-    const currentUser = await getCurrentUser(actor);
-    if (currentUser) setUser(currentUser);
-    setShowModal(false);
-  } catch (error) {
-    toast.error((error as Error).message || 'Failed to update data');
-  } finally {
-    setIsUpdating(false);
-    stopLoading();
-  }
-};
+      const currentUser = await getCurrentUser(actor);
+      if (currentUser) setUser(currentUser);
+      setShowModal(false);
+    } catch (error) {
+      toast.error((error as Error).message || 'Failed to update data');
+    } finally {
+      setIsUpdating(false);
+      stopLoading();
+    }
+  };
 
   useEffect(() => {
     if (user) return;
@@ -98,10 +98,10 @@ const handleUpdateUser = async () => {
               <div className="shadow-primary w-16 rounded-2xl shadow">
                 <img
                   onClick={() => {
-                     if (!actor) {
-                       toast.error('Actor belum siap. Coba beberapa saat lagi.');
-                       return;
-                     }
+                    if (!actor) {
+                      toast.error('Actor belum siap. Coba beberapa saat lagi.');
+                      return;
+                    }
                     setNameInput(user?.name || '');
                     setEmailInput(user?.email?.[0] || '');
                     setShowModal(true);
