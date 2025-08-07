@@ -1,18 +1,18 @@
-import { create } from "zustand";
-import { actor as createActor } from "@/lib/actor";
-import { ActorSubclass } from "@dfinity/agent";
-import { _SERVICE } from "declarations/eduverse_backend/eduverse_backend.did";
-import { getAuthClient } from "@/lib/authClient";
-import { Declaration } from "@/types";
-import { getUser } from "@/services/auth-service";
-import { persist } from "zustand/middleware";
+import { create } from 'zustand';
+import { actor as createActor } from '@/lib/actor';
+import { ActorSubclass } from '@dfinity/agent';
+import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
+import { getAuthClient } from '@/lib/authClient';
+import { Declaration } from '@/types';
+import { getUser } from '@/services/auth-service';
+import { persist } from 'zustand/middleware';
 
 type AuthStore = {
   isAuthenticated: boolean;
   principal: string | null;
   actor: ActorSubclass<_SERVICE> | null;
   user: Declaration.User | null;
-  setUser: (user: Declaration.User) => void
+  setUser: (user: Declaration.User) => void;
   login: () => Promise<{
     success: boolean;
     newUser: boolean;
@@ -34,7 +34,7 @@ export const useAuthStore = create<AuthStore>()(
           const client = await getAuthClient();
           try {
             await client.logout(); // clear session
-          } catch { }
+          } catch {}
 
           return new Promise((resolve, reject) => {
             client.login({
@@ -63,7 +63,6 @@ export const useAuthStore = create<AuthStore>()(
                     newUser: !user,
                     error: undefined,
                   });
-
                 } catch (err) {
                   console.error('Login success handler error:', err);
                   reject(err);
@@ -98,19 +97,19 @@ export const useAuthStore = create<AuthStore>()(
             user: null,
           });
         } catch (error) {
-          console.error("Logout error:", error);
+          console.error('Logout error:', error);
           throw error;
         }
       },
       setUser: (user) => {
         set({
-          user
-        })
+          user,
+        });
       },
     }),
 
     {
-      name: "auth-storage",
+      name: 'auth-storage',
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         principal: state.principal,
@@ -120,11 +119,10 @@ export const useAuthStore = create<AuthStore>()(
   )
 );
 
-
 export const useIsAuthenticated = () => useAuthStore((s) => s.isAuthenticated);
 export const usePrincipal = () => useAuthStore((s) => s.principal);
 export const useActor = () => useAuthStore((s) => s.actor);
-export const useAuthUser = () => useAuthStore((s) => s.user)
+export const useAuthUser = () => useAuthStore((s) => s.user);
 
 export const useAuthActions = () => {
   const { login, logout, setUser } = useAuthStore();

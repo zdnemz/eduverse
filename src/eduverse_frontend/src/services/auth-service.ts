@@ -14,9 +14,12 @@ export async function getUser(actor: ActorSubclass<_SERVICE>) {
   }
 }
 
-export async function updateUser(actor: ActorSubclass<_SERVICE>, data: { name: string, email: string }) {
+export async function updateUser(
+  actor: ActorSubclass<_SERVICE>,
+  data: { name: string; email: string }
+) {
   try {
-    const result = await actor.updateUser(data.name, [data.email])
+    const result = await actor.updateUser(data.name, [data.email]);
 
     return result;
   } catch (error) {
@@ -35,6 +38,3 @@ export async function getCertificate(actor: ActorSubclass<_SERVICE>) {
     return null;
   }
 }
-
-
-
