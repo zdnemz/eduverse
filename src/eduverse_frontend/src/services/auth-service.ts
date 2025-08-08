@@ -5,7 +5,21 @@ import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 export async function getUser(actor: ActorSubclass<_SERVICE>) {
   try {
     const result = await actor.getMyProfile();
-    const user = result[0] || null;
+    console.log('Raw result from backend:', result);
+
+    const user = result.length > 0 ? result[0] : null;
+
+    if (user) {
+      if ('admin' in user.role) {
+        console.log('User role:', 'admin');
+      } else if ('student' in user.role) {
+        console.log('User role:', 'student');
+      } else {
+        console.log('User role:', 'unknown');
+      }
+    } else {
+      console.log('No user found.');
+    }
 
     return user;
   } catch (error) {

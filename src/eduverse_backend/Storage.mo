@@ -126,15 +126,17 @@ module {
 
   // Function to add course to user's completed courses
   public func addCompletedCourse(users: UserStorage, principal: Principal, courseName: Text): () {
-    let existingUser = users.get(principal);
-    let updatedUser : Types.User = {
-      name = switch (existingUser) { case (?u) u.name; case null "Anonymous" };
-      email = switch (existingUser) { case (?u) u.email; case null null };
-      completedCourses = switch (existingUser) { 
-        case (?u) Array.append(u.completedCourses, [courseName]); 
-        case null [courseName]; 
+      let existingUser = users.get(principal);
+      let updatedUser : Types.User = {
+          name = switch (existingUser) { case (?u) u.name; case null "Anonymous" };
+          email = switch (existingUser) { case (?u) u.email; case null null };
+          completedCourses = switch (existingUser) { 
+              case (?u) Array.append(u.completedCourses, [courseName]); 
+              case null [courseName]; 
+          };
+          role = switch (existingUser) { case (?u) u.role; case null #student };
       };
-    };
-    users.put(principal, updatedUser);
+      users.put(principal, updatedUser);
   };
+
 }

@@ -51,7 +51,12 @@ module {
           case (?u) Array.append(u.completedCourses, [courseName]); 
           case null [courseName]; 
         };
+        role = switch (existingUser) {
+          case (?u) u.role;
+          case null #student;
+        };
       };
+
       Storage.putUser(users, caller, updatedUser);
 
       #ok(newCert);

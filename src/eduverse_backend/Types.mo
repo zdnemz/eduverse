@@ -2,10 +2,16 @@ import Time "mo:base/Time";
 
 module {
 
+  public type Role = {
+    #admin;
+    #student;
+  };
+
   public type User = {
     name : Text;
     email : ?Text;
     completedCourses : [Text];
+    role : Role;
   };
 
   public type Certificate = {

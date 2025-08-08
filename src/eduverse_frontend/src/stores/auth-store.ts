@@ -14,6 +14,7 @@ type AuthStore = {
   user: Declaration.User | null;
   setUser: (user: Declaration.User) => void;
   login: () => Promise<{
+    [x: string]: any;
     success: boolean;
     newUser: boolean;
     error: string | undefined;

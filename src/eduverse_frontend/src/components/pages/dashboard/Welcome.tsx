@@ -58,6 +58,9 @@ export default function Welcome() {
   };
 
   useEffect(() => {
+    console.log(`Principal: ${principal}`);
+    console.log('Type of principal:', typeof principal);
+
     if (user) return;
 
     async function getUser() {
@@ -68,6 +71,9 @@ export default function Welcome() {
 
         const currentUser = await getCurrentUser(actor);
         if (!currentUser) throw new Error('Failed to get user data');
+
+        // DEBUG: tampilkan role di console browser
+        console.log('User role:', currentUser.role);
 
         setUser(currentUser);
       } catch (err) {
