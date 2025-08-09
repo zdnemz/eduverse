@@ -5,35 +5,39 @@ import { MOTION_TRANSITION } from '@/constants/motion';
 const recentCourses = [
   {
     id: 1,
-    title: 'Advanced React Development',
+    title: 'Blockchain Fundamentals & Ethereum',
     progress: 85,
     totalLessons: 24,
     completedLessons: 20,
     duration: '12 weeks',
-    instructor: 'Sarah Chen',
-    thumbnail: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400',
-    difficulty: 'Advanced',
+    instructor: 'Dr. Vitalik Chen',
+    thumbnail: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400',
+    difficulty: 'Intermediate',
     rating: 4.9,
-    nextLesson: 'Custom Hooks Patterns',
-    category: 'Development',
+    nextLesson: 'Smart Contract Security',
+    category: 'Blockchain',
   },
   {
     id: 2,
-    title: 'UI/UX Design Fundamentals',
+    title: 'Solidity Smart Contract Development',
     progress: 60,
     totalLessons: 18,
     completedLessons: 11,
-    duration: '8 weeks',
-    instructor: 'Mike Johnson',
-    thumbnail: 'https://images.unsplash.com/photo-1586717791821-3f44a563fa4c?w=400',
-    difficulty: 'Intermediate',
+    duration: '10 weeks',
+    instructor: 'Alex Ethereum',
+    thumbnail: 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400',
+    difficulty: 'Advanced',
     rating: 4.8,
-    nextLesson: 'Color Theory Deep Dive',
-    category: 'Design',
+    nextLesson: 'DeFi Protocol Development',
+    category: 'Smart Contracts',
   },
 ];
 
-export default function Learning() {
+interface LearningProps {
+  onViewAll: () => void;
+}
+
+export default function Learning({ onViewAll }: LearningProps) {
   return (
     <section className="h-full">
       <motion.div
@@ -56,7 +60,8 @@ export default function Learning() {
             <BookOpen className="text-info h-6 w-6" />
             <h2 className="card-title text-2xl">Continue Learning</h2>
           </div>
-          <button className="btn btn-ghost btn-primary btn-sm gap-2 rounded-lg">
+          {/* Klik ini akan trigger onViewAll */}
+          <button className="btn btn-ghost btn-primary btn-sm gap-2 rounded-lg" onClick={onViewAll}>
             View All
             <ArrowRight className="h-4 w-4" />
           </button>
