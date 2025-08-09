@@ -1,6 +1,9 @@
 import { Declaration } from '@/types';
 import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
+import { useState, useEffect } from 'react';
+import { useLoading } from '@/hooks/useLoading';
+import { CourseInfo } from 'declarations/eduverse_backend/eduverse_backend.did';
 
 export async function getUser(actor: ActorSubclass<_SERVICE>) {
   try {
@@ -51,4 +54,28 @@ export async function getCertificate(actor: ActorSubclass<_SERVICE>) {
     console.error('get Certificate error:', error);
     return null;
   }
+}
+
+export function useCourse(actor: ActorSubclass<_SERVICE>) {
+  const [courses, setCourses] = useState<CourseInfo[]>([]);;
+  const { startLoading, stopLoading } = useLoading('courses');
+
+  useEffect(() => {
+    const fetchCourses = async () => {
+      if (!actor) return;
+      startLoading();
+      try {
+        const result = await actor.getCourses();
+        setCourses(result);
+      } catch (error) {
+        console.error('Failed to fetch courses:', error);
+      } finally {
+        stopLoading();
+      }
+    };
+
+    fetchCourses();
+  }, [actor, startLoading, stopLoading]);
+
+  return courses;
 }

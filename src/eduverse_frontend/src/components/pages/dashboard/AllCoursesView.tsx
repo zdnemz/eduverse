@@ -1,175 +1,166 @@
 import { BookOpen, Star, Clock, Users, Search, Filter, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MOTION_TRANSITION } from '@/constants/motion';
+import { useLoading } from '@/hooks/useLoading';
+import { useAuthUser } from '@/stores/auth-store';
+import { CourseInfo } from 'declarations/eduverse_backend/eduverse_backend.did';
+import { toast } from 'sonner';
+import { useCourse } from '@/services/auth-service';
+import { actor as createActor } from '@/lib/actor';
+import { getAuthClient } from '@/lib/authClient';
+import { ActorSubclass } from '@dfinity/agent';
+import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 
-// Data courses Web3/Blockchain focused
-const allCourses = [
-  {
-    id: 1,
-    title: 'Blockchain Fundamentals & Ethereum',
-    progress: 85,
-    totalLessons: 24,
-    completedLessons: 20,
-    duration: '12 weeks',
-    instructor: 'Dr. Vitalik Chen',
-    thumbnail: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400',
-    difficulty: 'Intermediate',
-    rating: 4.9,
-    nextLesson: 'Smart Contract Security',
-    category: 'Blockchain',
-    students: 1200,
-  },
-  {
-    id: 2,
-    title: 'Solidity Smart Contract Development',
-    progress: 60,
-    totalLessons: 18,
-    completedLessons: 11,
-    duration: '10 weeks',
-    instructor: 'Alex Ethereum',
-    thumbnail: 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400',
-    difficulty: 'Advanced',
-    rating: 4.8,
-    nextLesson: 'DeFi Protocol Development',
-    category: 'Smart Contracts',
-    students: 950,
-  },
-  {
-    id: 3,
-    title: 'Internet Computer (ICP) Development',
-    progress: 0,
-    totalLessons: 32,
-    completedLessons: 0,
-    duration: '14 weeks',
-    instructor: 'Dominic Williams',
-    thumbnail: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400',
-    difficulty: 'Advanced',
-    rating: 4.7,
-    nextLesson: 'Motoko Programming Basics',
-    category: 'Internet Computer',
-    students: 780,
-  },
-  {
-    id: 4,
-    title: 'Web3 Frontend with React & ethers.js',
-    progress: 30,
-    totalLessons: 20,
-    completedLessons: 6,
-    duration: '8 weeks',
-    instructor: 'Sarah Web3',
-    thumbnail: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=400',
-    difficulty: 'Intermediate',
-    rating: 4.6,
-    nextLesson: 'Wallet Integration',
-    category: 'Frontend',
-    students: 1100,
-  },
-  {
-    id: 5,
-    title: 'DeFi Protocols & Yield Farming',
-    progress: 75,
-    totalLessons: 22,
-    completedLessons: 17,
-    duration: '10 weeks',
-    instructor: 'Andre DeFi',
-    thumbnail: 'https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=400',
-    difficulty: 'Advanced',
-    rating: 4.9,
-    nextLesson: 'Liquidity Pool Optimization',
-    category: 'DeFi',
-    students: 890,
-  },
-  {
-    id: 6,
-    title: 'NFT Marketplace Development',
-    progress: 45,
-    totalLessons: 16,
-    completedLessons: 7,
-    duration: '6 weeks',
-    instructor: 'Maya NFT',
-    thumbnail: 'https://images.unsplash.com/photo-1620321023374-d1a68fbc720d?w=400',
-    difficulty: 'Intermediate',
-    rating: 4.8,
-    nextLesson: 'IPFS Integration',
-    category: 'NFTs',
-    students: 1300,
-  },
-  {
-    id: 7,
-    title: 'Rust Programming for Web3',
-    progress: 15,
-    totalLessons: 28,
-    completedLessons: 4,
-    duration: '12 weeks',
-    instructor: 'Gavin Rust',
-    thumbnail: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400',
-    difficulty: 'Advanced',
-    rating: 4.7,
-    nextLesson: 'Memory Management',
-    category: 'Programming',
-    students: 650,
-  },
-  {
-    id: 8,
-    title: 'DAO Governance & Tokenomics',
-    progress: 90,
-    totalLessons: 14,
-    completedLessons: 13,
-    duration: '4 weeks',
-    instructor: 'Token Master',
-    thumbnail: 'https://images.unsplash.com/photo-1639762681057-408e52192e55?w=400',
-    difficulty: 'Beginner',
-    rating: 4.6,
-    nextLesson: 'Final Project: Create Your DAO',
-    category: 'Governance',
-    students: 2100,
-  },
-  {
-    id: 9,
-    title: 'Cryptocurrency Trading & Analysis',
-    progress: 0,
-    totalLessons: 20,
-    completedLessons: 0,
-    duration: '8 weeks',
-    instructor: 'Crypto Analyst Pro',
-    thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=400',
-    difficulty: 'Beginner',
-    rating: 4.5,
-    nextLesson: 'Reading Candlestick Charts',
-    category: 'Trading',
-    students: 1800,
-  },
-];
+// Mapping untuk difficulty dari backend Motoko
+const getDifficultyText = (difficulty: any): string => {
+  if ('Beginner' in difficulty) return 'Beginner';
+  if ('Intermediate' in difficulty) return 'Intermediate';
+  if ('Advanced' in difficulty) return 'Advanced';
+  return 'Beginner';
+};
+
+// Mapping untuk difficulty badge class
+const getDifficultyBadgeClass = (difficulty: any): string => {
+  const text = getDifficultyText(difficulty);
+  switch (text) {
+    case 'Beginner':
+      return 'badge-success';
+    case 'Intermediate':
+      return 'badge-warning';
+    case 'Advanced':
+      return 'badge-error';
+    default:
+      return 'badge-success';
+  }
+};
 
 interface AllCoursesViewProps {
   onBack: () => void;
 }
 
+// Extended course type dengan progress data
+interface ExtendedCourseInfo extends CourseInfo {
+  progress?: number;
+  completedLessons?: number;
+  nextLesson?: string;
+}
+
 export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
+  const user = useAuthUser();
+  const { startLoading, stopLoading } = useLoading('courses');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [extendedCourses, setExtendedCourses] = useState<ExtendedCourseInfo[]>([]);
+  const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
 
-  const categories = [
-    'All',
-    'Blockchain',
-    'Smart Contracts',
-    'Internet Computer',
-    'Frontend',
-    'DeFi',
-    'NFTs',
-    'Programming',
-    'Governance',
-    'Trading',
-  ];
+  useEffect(() => {
+    if (!user) return;
 
-  const filteredCourses = allCourses.filter((course) => {
+    const initActor = async () => {
+      try {
+        const client = await getAuthClient();
+        if (await client.isAuthenticated()) {
+          const identity = client.getIdentity();
+          const newActor = await createActor(identity);
+          setActor(newActor);
+        }
+      } catch (error) {
+        console.error('Failed to initialize actor:', error);
+        toast.error('Failed to initialize connection');
+      }
+    };
+
+    initActor();
+  }, [user]);
+
+  const courses = useCourse(actor!);
+
+  useEffect(() => {
+    if (courses.length > 0) {
+      const extended: ExtendedCourseInfo[] = courses.map((course, index) => ({
+        ...course,
+        progress: Math.floor(Math.random() * 100), // Demo progress
+        completedLessons: Math.floor(Number(course.totalLessons) * Math.random()),
+        nextLesson: getNextLessonForCourse(course.category),
+      }));
+
+      setExtendedCourses(extended);
+
+      if (extended.length > 0) {
+        toast.success(`Loaded ${extended.length} courses successfully`);
+      }
+    }
+  }, [courses]);
+  
+  const getNextLessonForCourse = (category: string): string => {
+    const nextLessons: Record<string, string> = {
+      Blockchain: 'Smart Contract Security',
+      'Smart Contracts': 'DeFi Protocol Development',
+      'Internet Computer': 'Motoko Programming Basics',
+      Frontend: 'Wallet Integration',
+      DeFi: 'Liquidity Pool Optimization',
+      NFTs: 'IPFS Integration',
+      Programming: 'Memory Management',
+      Governance: 'Final Project: Create Your DAO',
+      Trading: 'Reading Candlestick Charts',
+    };
+    return nextLessons[category] || 'Getting Started';
+  };
+
+  // Get unique categories dari courses
+  const categories = ['All', ...new Set(extendedCourses.map((course) => course.category))];
+
+  const filteredCourses = extendedCourses.filter((course) => {
     const matchesSearch =
       course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       course.instructor.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || course.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const isLoading = !user || !actor || courses.length === 0;
+
+  if (isLoading) {
+    return (
+      <motion.div
+        className="space-y-6"
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={MOTION_TRANSITION}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="btn btn-ghost btn-sm gap-2 rounded-lg">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </button>
+            <BookOpen className="text-info h-8 w-8" />
+            <h1 className="text-base-content text-3xl font-bold md:text-4xl lg:text-5xl">
+              All Courses
+            </h1>
+          </div>
+        </div>
+
+        {/* Loading skeleton */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, index) => (
+            <div
+              key={index}
+              className="card border-base-300 bg-base-200 animate-pulse border shadow"
+            >
+              <div className="bg-base-300 h-48 w-full"></div>
+              <div className="card-body space-y-3 p-5">
+                <div className="bg-base-300 h-4 rounded"></div>
+                <div className="bg-base-300 h-3 w-3/4 rounded"></div>
+                <div className="bg-base-300 h-2 rounded"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -196,7 +187,7 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
         </div>
       </div>
 
-      {/* Search and Filter - Fixed Layout */}
+      {/* Search and Filter */}
       <motion.div
         className="bg-base-200/50 border-base-300/30 rounded-xl border p-4 backdrop-blur-sm"
         initial={{ opacity: 0, y: -10 }}
@@ -239,7 +230,7 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
         </div>
       </motion.div>
 
-      {/* Courses Grid - No wrapper card */}
+      {/* Courses Grid */}
       {filteredCourses.length === 0 ? (
         <motion.div
           className="from-base-300/30 via-base-200/20 to-base-300/30 border-base-300/30 rounded-2xl border bg-gradient-to-br py-16 text-center"
@@ -275,16 +266,8 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
                   className="h-48 w-full object-cover transition-transform duration-300 hover:scale-110"
                 />
                 <div className="absolute top-4 right-4 left-4 flex justify-between">
-                  <div
-                    className={`badge ${
-                      course.difficulty === 'Beginner'
-                        ? 'badge-success'
-                        : course.difficulty === 'Intermediate'
-                          ? 'badge-warning'
-                          : 'badge-error'
-                    } shadow-lg`}
-                  >
-                    {course.difficulty}
+                  <div className={`badge ${getDifficultyBadgeClass(course.difficulty)} shadow-lg`}>
+                    {getDifficultyText(course.difficulty)}
                   </div>
                   <div className="badge badge-neutral shadow-lg">
                     <Star className="mr-1 h-3 w-3 fill-current" />
@@ -305,7 +288,7 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
                   </div>
                   <div className="flex items-center gap-1">
                     <Users className="h-3 w-3" />
-                    {course.students.toLocaleString()}
+                    {Number(course.students).toLocaleString()}
                   </div>
                 </div>
 
@@ -317,24 +300,24 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
                 <div className="mt-auto">
                   <div className="mb-2 flex justify-between text-xs">
                     <span className="font-medium">Progress</span>
-                    <span className="text-primary font-bold">{course.progress}%</span>
+                    <span className="text-primary font-bold">{course.progress || 0}%</span>
                   </div>
                   <div className="bg-base-300 h-2 w-full overflow-hidden rounded-full">
                     <motion.div
                       className="from-primary to-primary/80 h-full rounded-full bg-gradient-to-r"
                       transition={{ duration: 0.8, delay: index * 0.05 + 0.3 }}
                       initial={{ width: 0 }}
-                      whileInView={{ width: `${course.progress}%` }}
+                      whileInView={{ width: `${course.progress || 0}%` }}
                       viewport={{ once: true }}
                     />
                   </div>
                   <div className="text-base-content/60 mt-2 text-xs">
-                    <span className="font-medium">{course.completedLessons}</span>/
-                    {course.totalLessons} lessons completed
+                    <span className="font-medium">{course.completedLessons || 0}</span>/
+                    {Number(course.totalLessons)} lessons completed
                   </div>
                 </div>
 
-                {course.progress > 0 && (
+                {(course.progress || 0) > 0 && (
                   <div className="text-base-content/70 bg-base-300/50 mt-3 rounded-lg p-2 text-xs">
                     <span className="text-base-content/50">Next:</span>{' '}
                     <span className="text-primary font-medium">{course.nextLesson}</span>

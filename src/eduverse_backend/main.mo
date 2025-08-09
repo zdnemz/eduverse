@@ -3,6 +3,7 @@ import Result "mo:base/Result";
 import Types "./Types";
 import Certificate "./certificate/Certificate";
 import User "./user/User";
+import Courses "./learning/Module";
 
 persistent actor class CertificateManager() : async CertificateManager = this {
 
@@ -43,4 +44,18 @@ persistent actor class CertificateManager() : async CertificateManager = this {
       nextCertId = savedNextCertId;
     });
   };
+
+  // Course
+  public query func getCourses() : async [Types.CourseInfo] {
+    return Courses.courses;
+  };
+
+  public query func getModules() : async [Types.LearningModule] {
+    return Courses.mapModules();
+  };
+
+  public query func getQuizzes() : async [Types.Quiz] {
+    return Courses.getQuizzes();
+  };
+
 };
