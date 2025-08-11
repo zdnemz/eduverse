@@ -57,7 +57,7 @@ export async function getCertificate(actor: ActorSubclass<_SERVICE>) {
 }
 
 export function useCourse(actor: ActorSubclass<_SERVICE>) {
-  const [courses, setCourses] = useState<CourseInfo[]>([]);;
+  const [courses, setCourses] = useState<CourseInfo[]>([]);
   const { startLoading, stopLoading } = useLoading('courses');
 
   useEffect(() => {

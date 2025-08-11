@@ -1,5 +1,3 @@
-import Time "mo:base/Time";
-
 module {
 
   public type Role = {
@@ -42,35 +40,73 @@ module {
     totalLessons: Nat;
   };
 
-  public type LearningModule = {
-    id: Nat;
-    courseId: Nat;
-    title: Text;
-    description: Text;
-    content: Text; // HTML atau Markdown
-    estimatedTime: Text;
-    createdAt: Time.Time;
-    updatedAt: Time.Time;
+  // Extended Types for Content
+  public type LessonType = {
+    #Video;
+    #Reading;
+    #Interactive;
+    #CodeLab;
+    #Assignment;
   };
 
-  public type Quiz = {
+  public type LessonContent = {
+    summary: Text;
+    keyPoints: [Text];
+    detailedContent: Text;
+    codeExamples: ?Text;
+  };
+
+  public type Lesson = {
     id: Nat;
-    moduleId: Nat;
     title: Text;
-    description: ?Text;
-    passingScore: Nat;
-    timeLimit: ?Nat; // detik
-    createdAt: Time.Time;
+    content: LessonContent;
+    videoUrl: ?Text;
+    duration: Text;
+    lessonType: LessonType;
+    resources: [Text];
+    isCompleted: Bool;
+  };
+
+  public type QuizQuestion = {
+    id: Nat;
+    question: Text;
+    options: [Text];
+    correctAnswerIndex: Nat;
+    explanation: Text;
+    difficulty: Difficulty;
+    timeLimit: ?Nat; // in seconds
+  };
+
+  public type Module = {
+    id: Nat;
+    title: Text;
+    description: Text;
+    estimatedTime: Text;
+    prerequisites: [Text];
+    isLocked: Bool;
+    lessons: [Lesson];
+    quiz: [QuizQuestion];
+  };
+
+  public type CourseContent = {
+    courseId: Nat;
+    modules: [Module];
   };
 
   public type UserProgress = {
     userId: Principal;
     courseId: Nat;
-    progress: Nat;  // persen 0-100
-    completedLessons: Nat;
-    nextLesson: ?Text;
-    quizPassed: Bool;
-    lastUpdated: Time.Time;
+    completedLessons: [Nat];
+    completedModules: [Nat];
+    quizScores: [(Nat, Float)]; // (quizId, score percentage)
+    lastAccessed: Int; // timestamp
+    overallProgress: Float; // 0.0 to 1.0
+  };
+
+  public type PersistData = {
+    users: [(Principal, User)];
+    certificates: [(Nat32, [Certificate])];
+    nextCertId: Nat;
   };
 
 }

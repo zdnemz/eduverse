@@ -79,7 +79,7 @@ export default function Learning({ onViewAll }: LearningProps) {
       const coursesWithProgress = courses
         .map((course, index) => ({
           ...course,
-          progress: Math.floor(Math.random() * 85) + 15, 
+          progress: Math.floor(Math.random() * 85) + 15,
           completedLessons: Math.floor(Number(course.totalLessons) * (Math.random() * 0.8 + 0.2)),
           nextLesson: getNextLessonForCourse(course.category),
         }))

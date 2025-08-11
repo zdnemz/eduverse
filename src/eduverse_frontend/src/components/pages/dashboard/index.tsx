@@ -9,10 +9,9 @@ import Welcome from './Welcome';
 import Stats from './Stats';
 import Achievements from './Achievements';
 import Learning from './Learning';
-import AllCoursesView from './AllCoursesView'; // Component baru yang akan kita buat
+import AllCoursesView from '../course/AllCoursesView';
 
 export default withAuth(function Dashboard() {
-  // State untuk toggle view
   const [showAllCourses, setShowAllCourses] = useState(false);
 
   return (
