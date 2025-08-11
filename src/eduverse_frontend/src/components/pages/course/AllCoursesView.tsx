@@ -1,6 +1,7 @@
 import { BookOpen, Star, Clock, Users, Search, Filter, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import { MOTION_TRANSITION } from '@/constants/motion';
 import { useLoading } from '@/hooks/useLoading';
 import { useAuthUser } from '@/stores/auth-store';
@@ -12,7 +13,7 @@ import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 
 import CourseIntroductionModal from './CourseIntroductionModal';
-import CourseDetailView from './CourseDetailView';
+// Hapus CourseDetailView import karena tidak dipakai lagi
 
 const getDifficultyText = (difficulty: Difficulty): string => {
   if ('Beginner' in difficulty) return 'Beginner';
@@ -76,6 +77,7 @@ const useCourses = (actor: ActorSubclass<_SERVICE> | null) => {
 };
 
 export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
+  const navigate = useNavigate(); // Add navigate hook
   const user = useAuthUser();
   const { startLoading, stopLoading } = useLoading('courses');
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,10 +85,9 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
   const [extendedCourses, setExtendedCourses] = useState<ExtendedCourseInfo[]>([]);
   const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
 
-  // Navigation states
+  // Navigation states - HAPUS showCourseDetail state
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<ExtendedCourseInfo | null>(null);
-  const [showCourseDetail, setShowCourseDetail] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -148,11 +149,12 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
     setShowIntroModal(true);
   };
 
-  // Handle start learning from modal
+  // Handle start learning from modal - REDIRECT KE HALAMAN COURSE
   const handleStartLearning = () => {
     if (selectedCourse) {
       setShowIntroModal(false);
-      setShowCourseDetail(true);
+      // Navigate ke halaman course dengan ID
+      navigate(`/course/${selectedCourse.id.toString()}`);
       toast.success(`Starting ${selectedCourse.title}!`);
     }
   };
@@ -163,11 +165,7 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
     setSelectedCourse(null);
   };
 
-  // Handle back from course detail
-  const handleBackFromCourseDetail = () => {
-    setShowCourseDetail(false);
-    setSelectedCourse(null);
-  };
+  // HAPUS handleBackFromCourseDetail function karena tidak dipakai lagi
 
   const categories = ['All', ...new Set(extendedCourses.map((course) => course.category))];
 
@@ -181,12 +179,7 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
 
   const isLoading = !user || !actor || coursesLoading;
 
-  // Show course detail view if selected
-  if (showCourseDetail && selectedCourse) {
-    return (
-      <CourseDetailView courseId={Number(selectedCourse.id)} onBack={handleBackFromCourseDetail} />
-    );
-  }
+  // HAPUS conditional render untuk CourseDetailView karena tidak dipakai lagi
 
   if (isLoading) {
     return (

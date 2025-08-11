@@ -18,7 +18,7 @@ interface CourseIntroductionModalProps {
   isOpen: boolean;
   onClose: () => void;
   course: CourseInfo | null;
-  onStartLearning: () => void;
+  onStartLearning: (courseId?: string | number) => void; // Updated type
   progress?: number;
 }
 
@@ -53,6 +53,10 @@ export default function CourseIntroductionModal({
   if (!course) return null;
 
   const isResuming = progress > 0;
+
+  const handleStartLearning = () => {
+    onStartLearning(course.id.toString()); // Pass course ID
+  };
 
   return (
     <AnimatePresence>
@@ -208,7 +212,7 @@ export default function CourseIntroductionModal({
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <motion.button
                     className="btn btn-primary flex-1 gap-2"
-                    onClick={onStartLearning}
+                    onClick={handleStartLearning} // Updated to use new handler
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >

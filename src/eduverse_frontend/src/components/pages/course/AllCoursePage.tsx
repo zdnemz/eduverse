@@ -4,17 +4,13 @@ import Navbar from '@/components/Navbar';
 import RootLayout from '@/components/layouts/RootLayout';
 import { withAuth } from '@/hoc/withAuth';
 import { useNavigate } from 'react-router-dom';
+import AllCoursesView from './AllCoursesView';
 
-import Welcome from './Welcome';
-import Stats from './Stats';
-import Achievements from './Achievements';
-import Learning from './Learning';
-
-export default withAuth(function Dashboard() {
+export default withAuth(function AllCoursesPage() {
   const navigate = useNavigate();
 
-  const handleViewAllCourses = () => {
-    navigate('/courses'); 
+  const handleBack = () => {
+    navigate('/dashboard');
   };
 
   return (
@@ -24,13 +20,7 @@ export default withAuth(function Dashboard() {
       footer={<Footer />}
       background={<BackgroundWithDots />}
     >
-      <h1 className="text-base-content text-3xl font-bold md:text-4xl lg:text-5xl">Dashboard</h1>
-      <Welcome />
-      <Stats />
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <Achievements />
-        <Learning onViewAll={handleViewAllCourses} />
-      </div>
+      <AllCoursesView onBack={handleBack} />
     </RootLayout>
   );
 });
