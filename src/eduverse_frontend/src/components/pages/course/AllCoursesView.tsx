@@ -1,7 +1,8 @@
+// AllCoursesView.tsx - Fixed version
 import { BookOpen, Star, Clock, Users, Search, Filter, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useNavigate } from 'react-router-dom';
 import { MOTION_TRANSITION } from '@/constants/motion';
 import { useLoading } from '@/hooks/useLoading';
 import { useAuthUser } from '@/stores/auth-store';
@@ -11,9 +12,7 @@ import { actor as createActor } from '@/lib/actor';
 import { getAuthClient } from '@/lib/authClient';
 import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
-
-import CourseIntroductionModal from './CourseIntroductionModal';
-// Hapus CourseDetailView import karena tidak dipakai lagi
+import CourseIntroModal from './CourseIntroductionModal';
 
 const getDifficultyText = (difficulty: Difficulty): string => {
   if ('Beginner' in difficulty) return 'Beginner';
@@ -40,14 +39,12 @@ interface AllCoursesViewProps {
   onBack?: () => void;
 }
 
-// Fixed interface - removed methods and properly extended CourseInfo
 interface ExtendedCourseInfo extends CourseInfo {
   progress?: number;
   completedLessons?: number;
   nextLesson?: string;
 }
 
-// Custom hook for courses
 const useCourses = (actor: ActorSubclass<_SERVICE> | null) => {
   const [courses, setCourses] = useState<CourseInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +74,7 @@ const useCourses = (actor: ActorSubclass<_SERVICE> | null) => {
 };
 
 export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
-  const navigate = useNavigate(); // Add navigate hook
+  const navigate = useNavigate();
   const user = useAuthUser();
   const { startLoading, stopLoading } = useLoading('courses');
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,21 +82,19 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
   const [extendedCourses, setExtendedCourses] = useState<ExtendedCourseInfo[]>([]);
   const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
 
-  // Navigation states - HAPUS showCourseDetail state
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<ExtendedCourseInfo | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-
     const initActor = async () => {
       try {
         const client = await getAuthClient();
-        if (await client.isAuthenticated()) {
-          const identity = client.getIdentity();
-          const newActor = await createActor(identity);
-          setActor(newActor);
-        }
+
+        const identity = client.getIdentity();
+        console.log('Identity principal:', identity.getPrincipal().toText());
+
+        const newActor = await createActor(identity);
+        setActor(newActor);
       } catch (error) {
         console.error('Failed to initialize actor:', error);
         toast.error('Failed to initialize connection');
@@ -107,7 +102,7 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
     };
 
     initActor();
-  }, [user]);
+  }, []);
 
   const { courses, loading: coursesLoading, error: coursesError } = useCourses(actor);
 
@@ -143,29 +138,42 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
     return nextLessons[category] || 'Getting Started';
   };
 
-  // Handle course card click
   const handleCourseClick = (course: ExtendedCourseInfo) => {
     setSelectedCourse(course);
     setShowIntroModal(true);
   };
 
-  // Handle start learning from modal - REDIRECT KE HALAMAN COURSE
-  const handleStartLearning = () => {
-    if (selectedCourse) {
+  const handleStartLearning = async () => {
+    if (!selectedCourse || !actor) return;
+
+    try {
+      startLoading();
+      const enrollResult = await actor.enrollCourse(selectedCourse.id);
+
+      if ('ok' in enrollResult) {
+        toast.success(enrollResult.ok);
+        navigate(`/learn/${selectedCourse.id.toString()}`);
+      } else {
+        if (enrollResult.err.includes('Already enrolled')) {
+          navigate(`/learn/${selectedCourse.id.toString()}`);
+        } else {
+          toast.error(enrollResult.err);
+        }
+      }
+    } catch (error) {
+      console.error('Error enrolling in course:', error);
+      toast.error('Failed to enroll in course');
+    } finally {
+      stopLoading();
       setShowIntroModal(false);
-      // Navigate ke halaman course dengan ID
-      navigate(`/course/${selectedCourse.id.toString()}`);
-      toast.success(`Starting ${selectedCourse.title}!`);
+      setSelectedCourse(null);
     }
   };
 
-  // Handle close modal
   const handleCloseModal = () => {
     setShowIntroModal(false);
     setSelectedCourse(null);
   };
-
-  // HAPUS handleBackFromCourseDetail function karena tidak dipakai lagi
 
   const categories = ['All', ...new Set(extendedCourses.map((course) => course.category))];
 
@@ -178,8 +186,6 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
   });
 
   const isLoading = !user || !actor || coursesLoading;
-
-  // HAPUS conditional render untuk CourseDetailView karena tidak dipakai lagi
 
   if (isLoading) {
     return (
@@ -322,7 +328,7 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredCourses.map((course, index) => (
               <motion.div
-                key={course.id.toString()} // Fixed: convert BigInt to string
+                key={course.id.toString()}
                 className="card border-base-300 bg-base-200 cursor-pointer border shadow transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-xl"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -368,7 +374,6 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
                     <div className="flex items-center gap-1">
                       <Users className="h-3 w-3" />
                       {Number(course.students).toLocaleString()}{' '}
-                      {/* Fixed: convert BigInt to number */}
                     </div>
                   </div>
 
@@ -394,7 +399,6 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
                     <div className="text-base-content/60 mt-2 text-xs">
                       <span className="font-medium">{course.completedLessons || 0}</span>/
                       {Number(course.totalLessons)} lessons completed{' '}
-                      {/* Fixed: convert BigInt to number */}
                     </div>
                   </div>
 
@@ -412,13 +416,14 @@ export default function AllCoursesView({ onBack }: AllCoursesViewProps) {
       </motion.div>
 
       {/* Course Introduction Modal */}
-      <CourseIntroductionModal
-        isOpen={showIntroModal}
-        onClose={handleCloseModal}
-        course={selectedCourse}
-        onStartLearning={handleStartLearning}
-        progress={selectedCourse?.progress}
-      />
+      {selectedCourse && (
+        <CourseIntroModal
+          course={selectedCourse}
+          onClose={handleCloseModal}
+          onStartLearning={handleStartLearning}
+          isOpen={showIntroModal}
+        />
+      )}
     </>
   );
 }

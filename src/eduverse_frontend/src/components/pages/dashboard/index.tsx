@@ -14,7 +14,7 @@ export default withAuth(function Dashboard() {
   const navigate = useNavigate();
 
   const handleViewAllCourses = () => {
-    navigate('/courses'); 
+    navigate('/courses');
   };
 
   return (

@@ -1,12 +1,11 @@
 import Principal "mo:base/Principal";
 import Result "mo:base/Result";
-import Array "mo:base/Array";
 import Time "mo:base/Time";
-import Nat32 "mo:base/Nat32";
+import Int "mo:base/Int";
+import Nat "mo:base/Nat";
 
 import Types "../Types";
 import Storage "../Storage";
-import Helper "../Helper";
 
 module {
   public class CertificateManager() {
@@ -15,45 +14,58 @@ module {
     private var certificates = Storage.createEmptyCertificates();
     private var nextCertificateId : Nat = 1;
 
-    public func claimCertificate(caller: Principal, courseName: Text): Result.Result<Types.Certificate, Text> {
+    public func claimCertificate(caller: Principal, courseName: Text, courseId: Nat): Result.Result<Types.Certificate, Text> {
       if (Principal.isAnonymous(caller)) {
         return #err("Anonymous users cannot claim certificates");
       };
 
+      let currentTime = Time.now(); // Keep as Int for timestamps
+
       let newCert : Types.Certificate = {
-        id = nextCertificateId;
+        tokenId = nextCertificateId;
+        userId = caller;
+        courseId = courseId;
         courseName = courseName;
-        dateIssued = Helper.formatTime(Time.now());
-        owner = caller;
+        completedAt = currentTime;
+        issuer = "Eduverse Academy";
+        certificateHash = "cert_" # Nat.toText(nextCertificateId) # "_" # Principal.toText(caller);
+        metadata = {
+          name = "Certificate of Completion - " # courseName;
+          description = "This NFT certificate confirms successful completion of " # courseName # " course on Eduverse Academy platform.";
+          image = "https://eduverse.academy/certificates/" # Nat.toText(nextCertificateId) # ".png";
+          attributes = [
+            { trait_type = "Course"; value = courseName },
+            { trait_type = "Completion Date"; value = Nat.toText(Int.abs(currentTime) / 1000000000) }
+          ];
+        };
       };
 
-      // Get principal hash for certificate storage
-      let principalHash = Helper.principalToNat(caller);
-      let principalHash32 = Nat32.fromNat(principalHash % (2**32)); // Convert to Nat32
-
-      // Add certificate to user's collection
-      let existingCerts = Storage.getCertificates(certificates, principalHash32);
-      let updatedCerts = switch (existingCerts) {
-        case (?certs) Array.append(certs, [newCert]);
-        case null [newCert];
-      };
-      Storage.putCertificates(certificates, principalHash32, updatedCerts);
+      // Add certificate to storage using the certificate ID as key
+      Storage.putCertificate(certificates, nextCertificateId, newCert);
       
       // Increment certificate ID
       nextCertificateId += 1;
 
-      // Update user's completed courses
+      // Ensure user exists in storage
       let existingUser = Storage.getUser(users, caller);
-      let updatedUser : Types.User = {
-        name = switch (existingUser) { case (?u) u.name; case null "Anonymous" };
-        email = switch (existingUser) { case (?u) u.email; case null null };
-        completedCourses = switch (existingUser) { 
-          case (?u) Array.append(u.completedCourses, [courseName]); 
-          case null [courseName]; 
+      let updatedUser : Types.User = switch (existingUser) {
+        case (?user) {
+          {
+            id = user.id;
+            name = user.name;
+            email = user.email;
+            createdAt = user.createdAt;
+            updatedAt = ?currentTime;
+          }
         };
-        role = switch (existingUser) {
-          case (?u) u.role;
-          case null #student;
+        case null {
+          {
+            id = caller;
+            name = "User";
+            email = null;
+            createdAt = currentTime;
+            updatedAt = null;
+          }
         };
       };
 
@@ -63,23 +75,18 @@ module {
     };
 
     public func getMyCertificates(caller: Principal): [Types.Certificate] {
-      let principalHash = Helper.principalToNat(caller);
-      let principalHash32 = Nat32.fromNat(principalHash % (2**32));
-      
-      switch (Storage.getCertificates(certificates, principalHash32)) {
-        case (?certs) certs;
-        case null [];
-      };
+      // Get all certificates and filter by owner
+      Storage.getUserCertificates(certificates, caller);
     };
 
     public func getCertificateById(certId: Nat): ?Types.Certificate {
-      Storage.findCertificateById(certificates, certId);
+      Storage.getCertificate(certificates, certId);
     };
 
     // Persistence functions
     public func persistData(): {
       users: [(Principal, Types.User)];
-      certificates: [(Nat32, [Types.Certificate])];
+      certificates: [(Nat, Types.Certificate)];
       nextCertId: Nat;
     } {
       {
@@ -91,7 +98,7 @@ module {
 
     public func loadData(data: {
       users: [(Principal, Types.User)];
-      certificates: [(Nat32, [Types.Certificate])];
+      certificates: [(Nat, Types.Certificate)];
       nextCertId: Nat;
     }): () {
       users := Storage.restoreUsers(data.users);
@@ -104,7 +111,7 @@ module {
       Storage.getAllUsers(users);
     };
 
-    public func getAllCertificates(): [(Nat32, [Types.Certificate])] {
+    public func getAllCertificates(): [(Nat, Types.Certificate)] {
       Storage.getAllCertificates(certificates);
     };
   };

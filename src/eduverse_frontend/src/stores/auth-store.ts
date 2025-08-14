@@ -7,6 +7,25 @@ import { Declaration } from '@/types';
 import { getUser } from '@/services/auth-service';
 import { persist } from 'zustand/middleware';
 
+const serializeUser = (user: Declaration.User | null): any => {
+  if (!user) return null;
+
+  return JSON.parse(
+    JSON.stringify(user, (key, value) => {
+      if (typeof value === 'bigint') {
+        return value.toString();
+      }
+      return value;
+    })
+  );
+};
+
+// Helper function to deserialize user data
+const deserializeUser = (userData: any): Declaration.User | null => {
+  if (!userData) return null;
+  return userData;
+};
+
 type AuthStore = {
   isAuthenticated: boolean;
   principal: string | null;
@@ -24,7 +43,7 @@ type AuthStore = {
 
 export const useAuthStore = create<AuthStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isAuthenticated: false,
       principal: null,
       actor: null,
@@ -34,7 +53,7 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const client = await getAuthClient();
           try {
-            await client.logout(); // clear session
+            await client.logout();
           } catch {}
 
           return new Promise((resolve, reject) => {
@@ -50,28 +69,43 @@ export const useAuthStore = create<AuthStore>()(
                   const identity = client.getIdentity();
                   const principal = identity.getPrincipal().toText();
                   const actor = await createActor(identity);
-                  const user = await getUser(actor);
+
+                  const userData = await getUser(actor);
+
+                  const serializedUser = serializeUser(userData);
 
                   set({
                     isAuthenticated: true,
                     principal,
-                    actor: null, // actor tidak bisa dipersist
-                    user,
+                    actor,
+                    user: serializedUser,
                   });
 
                   resolve({
                     success: true,
-                    newUser: !user,
+                    newUser: !userData,
                     error: undefined,
                   });
                 } catch (err) {
                   console.error('Login success handler error:', err);
+                  set({
+                    isAuthenticated: false,
+                    principal: null,
+                    actor: null,
+                    user: null,
+                  });
                   reject(err);
                 }
               },
 
               onError: (err) => {
                 console.error('Login error:', err);
+                set({
+                  isAuthenticated: false,
+                  principal: null,
+                  actor: null,
+                  user: null,
+                });
                 reject(err);
               },
             });
@@ -102,9 +136,11 @@ export const useAuthStore = create<AuthStore>()(
           throw error;
         }
       },
+
       setUser: (user) => {
+        const serializedUser = serializeUser(user);
         set({
-          user,
+          user: serializedUser,
         });
       },
     }),
@@ -116,6 +152,37 @@ export const useAuthStore = create<AuthStore>()(
         principal: state.principal,
         user: state.user,
       }),
+      storage: {
+        getItem: (name) => {
+          const str = localStorage.getItem(name);
+          if (!str) return null;
+          try {
+            const parsed = JSON.parse(str);
+            if (parsed.state?.user) {
+              parsed.state.user = deserializeUser(parsed.state.user);
+            }
+            return parsed;
+          } catch {
+            return null;
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            const serializedValue = JSON.parse(
+              JSON.stringify(value, (key, val) => {
+                if (typeof val === 'bigint') {
+                  return val.toString();
+                }
+                return val;
+              })
+            );
+            localStorage.setItem(name, JSON.stringify(serializedValue));
+          } catch (error) {
+            console.error('Failed to serialize state:', error);
+          }
+        },
+        removeItem: (name) => localStorage.removeItem(name),
+      },
     }
   )
 );

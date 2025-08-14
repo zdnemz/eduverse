@@ -1,7 +1,7 @@
 import { BookOpen, Star, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // Tambah import useNavigate
+import { useNavigate } from 'react-router-dom';
 import { MOTION_TRANSITION } from '@/constants/motion';
 import { useLoading } from '@/hooks/useLoading';
 import { useAuthUser } from '@/stores/auth-store';
@@ -12,8 +12,7 @@ import { actor as createActor } from '@/lib/actor';
 import { getAuthClient } from '@/lib/authClient';
 import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
-
-import CourseIntroductionModal from '../course/CourseIntroductionModal';
+import CourseIntroModal from '../course/CourseIntroductionModal';
 
 const getDifficultyText = (difficulty: any): string => {
   if ('Beginner' in difficulty) return 'Beginner';
@@ -47,28 +46,24 @@ interface ExtendedCourseInfo extends CourseInfo {
 }
 
 export default function Learning({ onViewAll }: LearningProps) {
-  const navigate = useNavigate(); // Tambah navigate hook
+  const navigate = useNavigate();
   const user = useAuthUser();
   const { startLoading, stopLoading } = useLoading('learning');
   const [recentCourses, setRecentCourses] = useState<ExtendedCourseInfo[]>([]);
   const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
 
-  // Navigation states
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<ExtendedCourseInfo | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-
     const initActor = async () => {
       try {
         startLoading();
         const client = await getAuthClient();
-        if (await client.isAuthenticated()) {
-          const identity = client.getIdentity();
-          const newActor = await createActor(identity);
-          setActor(newActor);
-        }
+
+        const identity = client.getIdentity(); // Hapus isAuthenticated check
+        const newActor = await createActor(identity);
+        setActor(newActor);
       } catch (error) {
         console.error('Failed to initialize actor:', error);
         toast.error('Failed to initialize connection');
@@ -78,7 +73,7 @@ export default function Learning({ onViewAll }: LearningProps) {
     };
 
     initActor();
-  }, [user, startLoading, stopLoading]);
+  }, []);
 
   const courses = useCourse(actor!);
 
@@ -113,22 +108,31 @@ export default function Learning({ onViewAll }: LearningProps) {
     return nextLessons[category] || 'Getting Started';
   };
 
-  // Handle course card click
   const handleCourseClick = (course: ExtendedCourseInfo) => {
     setSelectedCourse(course);
     setShowIntroModal(true);
   };
 
-  // Handle start learning from modal - Navigate ke halaman course
-  const handleStartLearning = () => {
-    if (selectedCourse) {
+  const handleStartLearning = async () => {
+    if (!selectedCourse) {
+      toast.error('Course not selected');
+      return;
+    }
+
+    try {
+      startLoading();
+      toast.success(`Starting ${selectedCourse.title}`);
+      navigate(`/learn/${selectedCourse.id.toString()}`);
+    } catch (error) {
+      console.error('Error starting course:', error);
+      toast.error('Failed to start course');
+    } finally {
+      stopLoading();
       setShowIntroModal(false);
-      navigate(`/course/${selectedCourse.id.toString()}`); // Navigate ke halaman course
-      toast.success(`Continuing ${selectedCourse.title}!`);
+      setSelectedCourse(null);
     }
   };
 
-  // Handle close modal
   const handleCloseModal = () => {
     setShowIntroModal(false);
     setSelectedCourse(null);
@@ -288,15 +292,14 @@ export default function Learning({ onViewAll }: LearningProps) {
           </div>
         </motion.div>
       </section>
-
-      {/* Course Introduction Modal */}
-      <CourseIntroductionModal
-        isOpen={showIntroModal}
-        onClose={handleCloseModal}
-        course={selectedCourse}
-        onStartLearning={handleStartLearning}
-        progress={selectedCourse?.progress}
-      />
+      {selectedCourse && (
+        <CourseIntroModal
+          course={selectedCourse}
+          onClose={handleCloseModal}
+          onStartLearning={handleStartLearning}
+          isOpen={showIntroModal}
+        />
+      )}
     </>
   );
 }

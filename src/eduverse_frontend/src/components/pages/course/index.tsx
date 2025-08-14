@@ -1,30 +1,26 @@
-// pages/course/index.tsx
-import { useParams, useNavigate } from 'react-router-dom';
-import CourseDetailView from './CourseDetailView';
+import { BackgroundWithDots } from '@/components/Background';
+import Footer from '@/components/Footer';
+import Navbar from '@/components/Navbar';
+import RootLayout from '@/components/layouts/RootLayout';
+import { withAuth } from '@/hoc/withAuth';
+import { useNavigate } from 'react-router-dom';
+import AllCoursesView from './AllCoursesView';
 
-export default function CoursePage() {
-  const { courseId } = useParams<{ courseId: string }>();
+export default withAuth(function AllCoursesPage() {
   const navigate = useNavigate();
 
   const handleBack = () => {
     navigate('/dashboard');
   };
 
-  const numericCourseId = courseId ? parseInt(courseId, 10) : 0;
-
-  if (!courseId || isNaN(numericCourseId)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-error text-2xl font-bold">Course Not Found</h1>
-          <p className="text-base-content/70 mt-2">Invalid course ID</p>
-          <button onClick={handleBack} className="btn btn-primary mt-4">
-            Back to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return <CourseDetailView courseId={numericCourseId} onBack={handleBack} />;
-}
+  return (
+    <RootLayout
+      className="min-h-screen w-full *:py-6 [&>*:first-child]:pt-24 [&>*:last-child]:pb-24"
+      header={<Navbar />}
+      footer={<Footer />}
+      background={<BackgroundWithDots />}
+    >
+      <AllCoursesView onBack={handleBack} />
+    </RootLayout>
+  );
+});

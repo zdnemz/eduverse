@@ -72,9 +72,6 @@ export default function Welcome() {
         const currentUser = await getCurrentUser(actor);
         if (!currentUser) throw new Error('Failed to get user data');
 
-        // DEBUG: tampilkan role di console browser
-        console.log('User role:', currentUser.role);
-
         setUser(currentUser);
       } catch (err) {
         const message = (err as Error).message;

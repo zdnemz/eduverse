@@ -1,32 +1,21 @@
 module {
-
-  public type Role = {
-    #admin;
-    #student;
-  };
-
-  public type User = {
-    name : Text;
-    email : ?Text;
-    completedCourses : [Text];
-    role : Role;
-  };
-
-  public type Certificate = {
-    id : Nat;
-    courseName : Text;
-    dateIssued : Text;
-    owner : Principal;
-  };
-
-  // === LEARNING MODULE TYPES ===
-
+  // Enum untuk difficulty level
   public type Difficulty = {
     #Beginner;
     #Intermediate;
     #Advanced;
   };
 
+  // Type untuk user basic info
+  public type User = {
+    id: Principal;
+    name: Text;
+    email: ?Text;
+    createdAt: Int;
+    updatedAt: ?Int;
+  };
+
+  // Type untuk informasi course
   public type CourseInfo = {
     id: Nat;
     title: Text;
@@ -40,73 +29,139 @@ module {
     totalLessons: Nat;
   };
 
-  // Extended Types for Content
-  public type LessonType = {
-    #Video;
-    #Reading;
-    #Interactive;
-    #CodeLab;
-    #Assignment;
-  };
-
-  public type LessonContent = {
-    summary: Text;
-    keyPoints: [Text];
-    detailedContent: Text;
-    codeExamples: ?Text;
-  };
-
-  public type Lesson = {
-    id: Nat;
-    title: Text;
-    content: LessonContent;
-    videoUrl: ?Text;
-    duration: Text;
-    lessonType: LessonType;
-    resources: [Text];
-    isCompleted: Bool;
-  };
-
-  public type QuizQuestion = {
-    id: Nat;
-    question: Text;
-    options: [Text];
-    correctAnswerIndex: Nat;
-    explanation: Text;
-    difficulty: Difficulty;
-    timeLimit: ?Nat; // in seconds
-  };
-
+  // Type untuk module dalam course
   public type Module = {
-    id: Nat;
+    moduleId: Nat;
     title: Text;
-    description: Text;
-    estimatedTime: Text;
-    prerequisites: [Text];
-    isLocked: Bool;
-    lessons: [Lesson];
-    quiz: [QuizQuestion];
+    content: Text; // Konten pembelajaran dalam bentuk text
+    codeExample: Text; // Contoh kode
   };
 
-  public type CourseContent = {
+  // Type untuk materi course
+  public type CourseMaterial = {
     courseId: Nat;
     modules: [Module];
   };
 
+  // Type untuk pertanyaan quiz
+  public type QuizQuestion = {
+    questionId: Nat;
+    question: Text;
+    options: [Text]; // Array of multiple choice options
+    correctAnswer: Nat; // Index of correct answer (0-based)
+    explanation: Text; // Penjelasan jawaban yang benar
+  };
+
+  // Type untuk quiz
+  public type CourseQuiz = {
+    courseId: Nat;
+    moduleId: Nat;
+    title: Text;
+    questions: [QuizQuestion];
+    passingScore: Nat; // Passing score dalam persentase (0-100)
+    timeLimit: Nat; // Time limit dalam detik
+  };
+
+  // Type untuk jawaban user
+  public type UserAnswer = {
+    questionId: Nat;
+    selectedAnswer: Nat;
+  };
+
+  // Type untuk hasil quiz
+  public type QuizResult = {
+    userId: Principal;
+    courseId: Nat;
+    moduleId: Nat;
+    score: Nat; // Score dalam persentase
+    passed: Bool;
+    completedAt: Int; // Timestamp
+    answers: [UserAnswer];
+  };
+
+  // Type untuk progress user
   public type UserProgress = {
     userId: Principal;
     courseId: Nat;
-    completedLessons: [Nat];
-    completedModules: [Nat];
-    quizScores: [(Nat, Float)]; // (quizId, score percentage)
-    lastAccessed: Int; // timestamp
-    overallProgress: Float; // 0.0 to 1.0
+    completedModules: [Nat]; // Array of completed module IDs
+    quizResults: [QuizResult];
+    overallProgress: Nat; // Progress dalam persentase
+    lastAccessed: Int; // Timestamp
   };
 
-  public type PersistData = {
-    users: [(Principal, User)];
-    certificates: [(Nat32, [Certificate])];
-    nextCertId: Nat;
+  // Type untuk sertifikat NFT
+  public type Certificate = {
+    tokenId: Nat;
+    userId: Principal;
+    courseId: Nat;
+    courseName: Text;
+    completedAt: Int; // Timestamp
+    issuer: Text; // Nama platform/institusi
+    certificateHash: Text; // Hash untuk verifikasi
+    metadata: CertificateMetadata;
   };
 
-}
+  public type CertificateMetadata = {
+    name: Text;
+    description: Text;
+    image: Text; // URL to certificate image
+    attributes: [CertificateAttribute];
+  };
+
+  public type CertificateAttribute = {
+    trait_type: Text;
+    value: Text;
+  };
+
+  // Type untuk enrollment
+  public type Enrollment = {
+    userId: Principal;
+    courseId: Nat;
+    enrolledAt: Int; // Timestamp
+    status: EnrollmentStatus;
+  };
+
+  public type EnrollmentStatus = {
+    #Active;
+    #Completed;
+    #Paused;
+    #Dropped;
+  };
+
+  // Type untuk respons API
+  public type ApiResponse<T> = {
+    #Ok: T;
+    #Err: Text;
+  };
+
+  // Type untuk statistik course
+  public type CourseStats = {
+    courseId: Nat;
+    totalEnrollments: Nat;
+    completionRate: Float; // Persentase completion rate
+    averageScore: Float;
+    averageTimeToComplete: Nat; // Dalam hari
+  };
+
+  // Type untuk user profile
+  public type UserProfile = {
+    userId: Principal;
+    username: ?Text;
+    email: ?Text;
+    joinedAt: Int;
+    totalCoursesCompleted: Nat;
+    certificates: [Nat]; // Array of certificate token IDs
+    achievements: [Text];
+  };
+
+  // Type untuk learning path
+  public type LearningPath = {
+    pathId: Nat;
+    title: Text;
+    description: Text;
+    courses: [Nat]; // Array of course IDs dalam urutan
+    difficulty: Difficulty;
+    estimatedDuration: Text;
+    prerequisites: [Text];
+  };
+};

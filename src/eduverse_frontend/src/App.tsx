@@ -4,8 +4,8 @@ import Home from 'pages/home/Index';
 import Dashboard from 'pages/dashboard';
 import ProfileSetup from 'pages/profile/setup';
 import Certificate from 'pages/certificate';
-import CoursePage from 'pages/course';
-import AllCoursesPage from 'pages/course/AllCoursePage';
+import AllCoursesPage from '@/components/pages/course';
+import LearningRoute from '@/components/pages/course/LearningRoute';
 
 export default function App() {
   return (
@@ -14,7 +14,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/courses" element={<AllCoursesPage />} />
-        <Route path="/course/:courseId" element={<CoursePage />} />
+        <Route path="/learn/:courseId" element={<LearningRoute />} />
         <Route path="/profile/setup" element={<ProfileSetup />} />
         <Route path="/certificate" element={<Certificate />} />
         <Route path="*" element={<Navigate to="/" replace />} />

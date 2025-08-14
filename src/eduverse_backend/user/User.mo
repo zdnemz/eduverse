@@ -1,70 +1,282 @@
+import HashMap "mo:base/HashMap";
 import Principal "mo:base/Principal";
+import Time "mo:base/Time";
 import Result "mo:base/Result";
 import Array "mo:base/Array";
+import Iter "mo:base/Iter";
+import Text "mo:base/Text";
+import Nat "mo:base/Nat";
 import Types "../Types";
-import Debug "mo:base/Debug";
-import Storage "../Storage";
 
 module {
   public class UserManager() {
-
-    private var users = Storage.createEmptyUsers();
-
-    private let adminList : [Principal] = [
-      Principal.fromText("gsxgw-6jb4f-hbcmv-qwtfr-mv3pp-pjvkd-i344o-ig7cz-xfirm-srnl4-5ae"),
-    ];
-
-    public func updateUser(caller: Principal, name: Text, email: ?Text): Result.Result<Text, Text> {
-      if (Principal.isAnonymous(caller)) {
-        return #err("Anonymous users cannot update profiles");
+    // Storage untuk user data
+    private var users = HashMap.HashMap<Principal, Types.User>(10, Principal.equal, Principal.hash);
+    private var profiles = HashMap.HashMap<Principal, Types.UserProfile>(10, Principal.equal, Principal.hash);
+    
+    // User CRUD operations
+    public func updateUser(userId: Principal, name: Text, email: ?Text): Result.Result<Text, Text> {
+      // Validate input
+      if (Text.size(name) == 0) {
+        return #err("Name cannot be empty");
       };
-
-      Debug.print("Caller principal: " # Principal.toText(caller));
-      for (p in adminList.vals()) {
-        Debug.print("Admin list principal: " # Principal.toText(p));
+      
+      // Check if email is valid (basic validation)
+      switch (email) {
+        case (?emailValue) {
+          if (Text.size(emailValue) > 0 and not Text.contains(emailValue, #char '@')) {
+            return #err("Invalid email format");
+          };
+        };
+        case null { };
       };
-
-      let existingUser = Storage.getUser(users, caller);
-
-      let role : Types.Role = switch (existingUser) {
-        case (?user) user.role;
+      
+      let currentTime = Time.now();
+      
+      // Update or create user
+      let user: Types.User = switch (users.get(userId)) {
+        case (?existingUser) {
+          {
+            existingUser with
+            name = name;
+            email = email;
+            updatedAt = ?currentTime;
+          }
+        };
         case null {
-          if (Array.find<Principal>(adminList, func(a) { Principal.equal(a, caller) }) != null) {
-            #admin
-          } else {
-            #student
+          {
+            id = userId;
+            name = name;
+            email = email;
+            createdAt = currentTime;
+            updatedAt = null;
           }
         };
       };
-
-      let updatedUser : Types.User = {
+      
+      users.put(userId, user);
+      
+      // Update or create profile
+      let profile: Types.UserProfile = switch (profiles.get(userId)) {
+        case (?existingProfile) {
+          {
+            existingProfile with
+            username = ?name;
+            email = email;
+          }
+        };
+        case null {
+          {
+            userId = userId;
+            username = ?name;
+            email = email;
+            joinedAt = currentTime;
+            totalCoursesCompleted = 0;
+            certificates = [];
+            achievements = [];
+          }
+        };
+      };
+      
+      profiles.put(userId, profile);
+      
+      #ok("User profile updated successfully")
+    };
+    
+    public func getUser(userId: Principal): ?Types.User {
+      users.get(userId)
+    };
+    
+    public func getMyProfile(userId: Principal): ?Types.User {
+      users.get(userId)
+    };
+    
+    public func getUserProfile(userId: Principal): ?Types.UserProfile {
+      profiles.get(userId)
+    };
+    
+    public func createUser(userId: Principal, name: Text, email: ?Text): Result.Result<Types.User, Text> {
+      // Check if user already exists
+      switch (users.get(userId)) {
+        case (?_) { return #err("User already exists") };
+        case null { };
+      };
+      
+      // Validate input
+      if (Text.size(name) == 0) {
+        return #err("Name cannot be empty");
+      };
+      
+      let currentTime = Time.now();
+      
+      let newUser: Types.User = {
+        id = userId;
         name = name;
         email = email;
-        completedCourses = switch (existingUser) {
-          case (?user) user.completedCourses;
-          case null [];
-        };
-        role = role;
+        createdAt = currentTime;
+        updatedAt = null;
       };
-      Storage.putUser(users, caller, updatedUser);
-
-      #ok("Profile updated successfully");
+      
+      let newProfile: Types.UserProfile = {
+        userId = userId;
+        username = ?name;
+        email = email;
+        joinedAt = currentTime;
+        totalCoursesCompleted = 0;
+        certificates = [];
+        achievements = [];
+      };
+      
+      users.put(userId, newUser);
+      profiles.put(userId, newProfile);
+      
+      #ok(newUser)
     };
-
-    public func getMyProfile(caller: Principal): ?Types.User {
-      Storage.getUser(users, caller);
+    
+    public func deleteUser(userId: Principal): Result.Result<Text, Text> {
+      switch (users.get(userId)) {
+        case null { #err("User not found") };
+        case (?_) {
+          users.delete(userId);
+          profiles.delete(userId);
+          #ok("User deleted successfully")
+        };
+      }
     };
-
-    public func persistData(): [(Principal, Types.User)] {
-      Storage.persistUsers(users);
+    
+    // Profile management
+    public func updateCourseCompletion(userId: Principal, increment: Bool): Result.Result<Text, Text> {
+      switch (profiles.get(userId)) {
+        case null { #err("User profile not found") };
+        case (?profile) {
+          let newCount = if (increment) {
+            profile.totalCoursesCompleted + 1
+          } else {
+            Nat.sub(profile.totalCoursesCompleted, 1)
+          };
+          
+          let updatedProfile = {
+            profile with
+            totalCoursesCompleted = newCount;
+          };
+          
+          profiles.put(userId, updatedProfile);
+          #ok("Course completion count updated")
+        };
+      }
     };
-
-    public func loadData(userEntries: [(Principal, Types.User)]): () {
-      Storage.loadUsers(users, userEntries);
+    
+    public func addCertificate(userId: Principal, certificateId: Nat): Result.Result<Text, Text> {
+      switch (profiles.get(userId)) {
+        case null { #err("User profile not found") };
+        case (?profile) {
+          // Check if certificate already exists
+          if (Array.find<Nat>(profile.certificates, func(id) = id == certificateId) != null) {
+            return #err("Certificate already added to profile");
+          };
+          
+          let updatedProfile = {
+            profile with
+            certificates = Array.append(profile.certificates, [certificateId]);
+          };
+          
+          profiles.put(userId, updatedProfile);
+          #ok("Certificate added to profile")
+        };
+      }
     };
-
-    public func restoreData(userEntries: [(Principal, Types.User)]): () {
-      users := Storage.restoreUsers(userEntries);
+    
+    public func addAchievement(userId: Principal, achievement: Text): Result.Result<Text, Text> {
+      switch (profiles.get(userId)) {
+        case null { #err("User profile not found") };
+        case (?profile) {
+          // Check if achievement already exists
+          if (Array.find<Text>(profile.achievements, func(a) = a == achievement) != null) {
+            return #err("Achievement already exists");
+          };
+          
+          let updatedProfile = {
+            profile with
+            achievements = Array.append(profile.achievements, [achievement]);
+          };
+          
+          profiles.put(userId, updatedProfile);
+          #ok("Achievement added")
+        };
+      }
+    };
+    
+    // Statistics and analytics
+    public func getTotalUsers(): Nat {
+      users.size()
+    };
+    
+    public func getUserStats(userId: Principal): ?{
+      totalCourses: Nat;
+      certificateCount: Nat;
+      achievementCount: Nat;
+      memberSince: Int;
+    } {
+      switch (profiles.get(userId)) {
+        case null { null };
+        case (?profile) {
+          ?{
+            totalCourses = profile.totalCoursesCompleted;
+            certificateCount = profile.certificates.size();
+            achievementCount = profile.achievements.size();
+            memberSince = profile.joinedAt;
+          }
+        };
+      }
+    };
+    
+    // Search functions
+    public func searchUsersByName(searchTerm: Text): [Types.User] {
+      let lowerSearchTerm = Text.toLowercase(searchTerm);
+      let allUsers = users.vals() |> Iter.toArray(_);
+      
+      Array.filter<Types.User>(allUsers, func(user) {
+        Text.contains(Text.toLowercase(user.name), #text lowerSearchTerm)
+      })
+    };
+    
+    // Bulk operations
+    public func getAllUsers(): [Types.User] {
+      users.vals() |> Iter.toArray(_)
+    };
+    
+    public func getAllProfiles(): [Types.UserProfile] {
+      profiles.vals() |> Iter.toArray(_)
+    };
+    
+    // User validation
+    public func validateUser(userId: Principal): Bool {
+      switch (users.get(userId)) {
+        case null { false };
+        case (?_) { true };
+      }
+    };
+    
+    public func isUserActive(userId: Principal): Bool {
+      switch (users.get(userId)) {
+        case null { false };
+        case (?user) {
+          // Consider user active if created less than 1 year ago
+          let oneYear = 365 * 24 * 60 * 60 * 1_000_000_000; // in nanoseconds
+          let currentTime = Time.now();
+          (currentTime - user.createdAt) < oneYear
+        };
+      }
+    };
+    
+    // Utility functions for upgrades
+    public func getSize(): Nat {
+      users.size()
+    };
+    
+    public func clear(): () {
+      users := HashMap.HashMap<Principal, Types.User>(10, Principal.equal, Principal.hash);
+      profiles := HashMap.HashMap<Principal, Types.UserProfile>(10, Principal.equal, Principal.hash);
     };
   };
-}
+};

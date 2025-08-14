@@ -23,7 +23,6 @@ const profileSetupSchema = z.object({
     )
     .transform((val) => val.trim()),
   email: z
-    .string()
     .email('Please enter a valid email address')
     .max(254)
     .transform((val) => val.trim().toLowerCase()),
