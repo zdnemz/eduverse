@@ -41,7 +41,7 @@ Frontend Dashboard
 EduVerse/
 ├── src/
 │   ├── eduverse_backend/   # Motoko canister (NFT certificate logic)
-│   └── edu_versefrontend/  # React frontend (learning, quiz, dashboard)
+│   └── eduverse_frontend/  # React frontend (learning, quiz, dashboard)
 ├── README.md
 └── dfx.json                # ICP project configuration
 ```
@@ -88,8 +88,8 @@ npm start
 ## 📌 **Roadmap**
 
 * [x] Basic Internet Identity Login
-* [ ] Quiz & Certificate Claim
-* [ ] Simple NFT Minting (DIP721-like)
+* [x] Quiz & Certificate Claim
+* [x] Simple NFT Minting (DIP721-like)
 * [ ] Token reward integration (DIP20)
 * [ ] Leaderboard & Gamification
 * [ ] Integration with external EduTech platforms
