@@ -1,4 +1,3 @@
-// components/course/CourseIntroductionModal.tsx
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,

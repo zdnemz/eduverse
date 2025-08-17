@@ -4,8 +4,7 @@ import Home from 'pages/home/Index';
 import Dashboard from 'pages/dashboard';
 import ProfileSetup from 'pages/profile/setup';
 import Certificate from 'pages/certificate';
-import AllCoursesPage from '@/components/pages/course';
-import LearningRoute from '@/components/pages/course/LearningRoute';
+import { AllCoursesPage, LearningRoute } from 'pages/course';
 
 export default function App() {
   return (

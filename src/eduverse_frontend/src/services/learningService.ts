@@ -204,12 +204,57 @@ export class LearningService {
     }
   }
 
-  async submitQuiz(courseId: number, moduleId: number, answers: any[]) {
+  async submitQuiz(
+    courseId: number,
+    moduleId: number,
+    answers: { questionId: number; selectedAnswer: number }[]
+  ) {
     try {
-      const result = await this.actor.submitQuiz(toBigInt(courseId), toBigInt(moduleId), answers);
+      // Convert answers to the correct format expected by backend
+      const formattedAnswers = answers.map((answer) => ({
+        questionId: toBigInt(answer.questionId),
+        selectedAnswer: toBigInt(answer.selectedAnswer),
+      }));
+
+      const result = await this.actor.submitQuiz(
+        toBigInt(courseId),
+        toBigInt(moduleId),
+        formattedAnswers
+      );
       return convertBigIntToString(result);
     } catch (error) {
       console.error('Error submitting quiz:', error);
+      throw error;
+    }
+  }
+
+  async getAllModuleQuizzes(courseId: number) {
+    try {
+      const materials = await this.getCourseMaterials(courseId);
+      if ('ok' in materials && materials.ok.modules) {
+        const quizPromises = materials.ok.modules.map(async (module: any) => {
+          try {
+            const quizResult = await this.getQuiz(courseId, Number(module.moduleId));
+            return {
+              moduleId: Number(module.moduleId),
+              available: 'ok' in quizResult,
+              quiz: 'ok' in quizResult ? quizResult.ok : null,
+            };
+          } catch (error) {
+            return {
+              moduleId: Number(module.moduleId),
+              available: false,
+              quiz: null,
+            };
+          }
+        });
+
+        const quizAvailability = await Promise.all(quizPromises);
+        return quizAvailability;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching all module quizzes:', error);
       throw error;
     }
   }
@@ -223,6 +268,232 @@ export class LearningService {
       throw error;
     }
   }
+
+  async getQuizResultByModule(courseId: number, moduleId: number) {
+    try {
+      const allResults = await this.getUserQuizResults(courseId);
+      return allResults.find((result: any) => Number(result.moduleId) === moduleId) || null;
+    } catch (error) {
+      console.error('Error fetching quiz result by module:', error);
+      return null;
+    }
+  }
+
+  async hasPassedQuiz(courseId: number, moduleId: number): Promise<boolean> {
+    try {
+      const result = await this.getQuizResultByModule(courseId, moduleId);
+      return result ? result.passed : false;
+    } catch (error) {
+      console.error('Error checking quiz pass status:', error);
+      return false;
+    }
+  }
+
+  async getQuizScore(courseId: number, moduleId: number): Promise<number> {
+    try {
+      const result = await this.getQuizResultByModule(courseId, moduleId);
+      return result ? Number(result.score) : 0;
+    } catch (error) {
+      console.error('Error getting quiz score:', error);
+      return 0;
+    }
+  }
+
+  // Enhanced Progress Methods
+  async getModuleProgress(courseId: number): Promise<
+    {
+      moduleId: number;
+      isCompleted: boolean;
+      hasQuiz: boolean;
+      quizPassed: boolean;
+      quizScore?: number;
+    }[]
+  > {
+    try {
+      const materials = await this.getCourseMaterials(courseId);
+      const completedModules = await this.getCompletedModules(courseId);
+      const quizResults = await this.getUserQuizResults(courseId);
+
+      if ('ok' in materials && materials.ok.modules) {
+        const moduleProgress = await Promise.all(
+          materials.ok.modules.map(async (module: any) => {
+            const moduleId = Number(module.moduleId);
+            const isCompleted = completedModules.includes(moduleId);
+
+            // Check if quiz exists for this module
+            let hasQuiz = false;
+            let quizPassed = false;
+            let quizScore = undefined;
+
+            try {
+              const quizResult = await this.getQuiz(courseId, moduleId);
+              hasQuiz = 'ok' in quizResult;
+
+              if (hasQuiz) {
+                const moduleQuizResult = quizResults.find(
+                  (r: any) => Number(r.moduleId) === moduleId
+                );
+                if (moduleQuizResult) {
+                  quizPassed = moduleQuizResult.passed;
+                  quizScore = Number(moduleQuizResult.score);
+                }
+              }
+            } catch (error) {
+              // Quiz doesn't exist for this module
+            }
+
+            return {
+              moduleId,
+              isCompleted,
+              hasQuiz,
+              quizPassed,
+              quizScore,
+            };
+          })
+        );
+
+        return moduleProgress;
+      }
+
+      return [];
+    } catch (error) {
+      console.error('Error getting module progress:', error);
+      return [];
+    }
+  }
+
+  async getCourseCompletionStatus(courseId: number): Promise<{
+    isCompleted: boolean;
+    modulesCompleted: number;
+    totalModules: number;
+    quizzesCompleted: number;
+    totalQuizzes: number;
+    overallProgress: number;
+    canGetCertificate: boolean;
+  }> {
+    try {
+      const materials = await this.getCourseMaterials(courseId);
+      const moduleProgress = await this.getModuleProgress(courseId);
+      const certificates = await this.getUserCertificates();
+
+      const totalModules = 'ok' in materials ? materials.ok.modules.length : 0;
+      const modulesCompleted = moduleProgress.filter((mp) => mp.isCompleted).length;
+      const totalQuizzes = moduleProgress.filter((mp) => mp.hasQuiz).length;
+      const quizzesCompleted = moduleProgress.filter((mp) => mp.quizPassed).length;
+
+      const overallProgress = totalModules > 0 ? (modulesCompleted / totalModules) * 100 : 0;
+      const isCompleted = modulesCompleted === totalModules && quizzesCompleted === totalQuizzes;
+      const hasCertificate = certificates.some((cert: any) => Number(cert.courseId) === courseId);
+
+      return {
+        isCompleted,
+        modulesCompleted,
+        totalModules,
+        quizzesCompleted,
+        totalQuizzes,
+        overallProgress,
+        canGetCertificate: isCompleted && !hasCertificate,
+      };
+    } catch (error) {
+      console.error('Error getting course completion status:', error);
+      return {
+        isCompleted: false,
+        modulesCompleted: 0,
+        totalModules: 0,
+        quizzesCompleted: 0,
+        totalQuizzes: 0,
+        overallProgress: 0,
+        canGetCertificate: false,
+      };
+    }
+  }
+
+  async canTakeFinalQuiz(courseId: number): Promise<boolean> {
+    try {
+      const moduleProgress = await this.getModuleProgress(courseId);
+
+      // Check if all modules are completed
+      const allModulesCompleted = moduleProgress.every((mp) => mp.isCompleted);
+
+      // Check if all module quizzes are passed (if they exist)
+      const allRequiredQuizzesPassed = moduleProgress.every((mp) => !mp.hasQuiz || mp.quizPassed);
+
+      return allModulesCompleted && allRequiredQuizzesPassed;
+    } catch (error) {
+      console.error('Error checking final quiz eligibility:', error);
+      return false;
+    }
+  }
+
+  // Custom hooks for quiz functionality
+  useQuizAvailability = (learningService: LearningService | null, courseId: number) => {
+    const [quizAvailability, setQuizAvailability] = useState<{ [moduleId: number]: boolean }>({});
+    const [loading, setLoading] = useState(true);
+
+    const fetchQuizAvailability = useCallback(async () => {
+      if (!learningService) return;
+
+      try {
+        setLoading(true);
+        const quizzes = await learningService.getAllModuleQuizzes(courseId);
+        const availability = quizzes.reduce(
+          (acc, quiz) => {
+            acc[quiz.moduleId] = quiz.available;
+            return acc;
+          },
+          {} as { [moduleId: number]: boolean }
+        );
+
+        setQuizAvailability(availability);
+      } catch (error) {
+        console.error('Error fetching quiz availability:', error);
+      } finally {
+        setLoading(false);
+      }
+    }, [learningService, courseId]);
+
+    useEffect(() => {
+      fetchQuizAvailability();
+    }, [fetchQuizAvailability]);
+
+    return {
+      quizAvailability,
+      loading,
+      refetch: fetchQuizAvailability,
+      hasQuiz: (moduleId: number) => quizAvailability[moduleId] || false,
+    };
+  };
+
+  useModuleProgress = (learningService: LearningService | null, courseId: number) => {
+    const [moduleProgress, setModuleProgress] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchModuleProgress = useCallback(async () => {
+      if (!learningService) return;
+
+      try {
+        setLoading(true);
+        const progress = await learningService.getModuleProgress(courseId);
+        setModuleProgress(progress);
+      } catch (error) {
+        console.error('Error fetching module progress:', error);
+      } finally {
+        setLoading(false);
+      }
+    }, [learningService, courseId]);
+
+    useEffect(() => {
+      fetchModuleProgress();
+    }, [fetchModuleProgress]);
+
+    return {
+      moduleProgress,
+      loading,
+      refetch: fetchModuleProgress,
+      getModuleProgress: (moduleId: number) =>
+        moduleProgress.find((mp) => mp.moduleId === moduleId),
+    };
+  };
 
   // Certificate Methods
   async getUserCertificates() {

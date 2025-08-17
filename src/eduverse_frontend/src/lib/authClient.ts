@@ -12,7 +12,7 @@ export const getAuthClient = async (): Promise<AuthClient> => {
     });
 
     if (process.env.NODE_ENV === 'development') {
-      await authClient.logout(); 
+      await authClient.logout();
     }
   }
   return authClient;
