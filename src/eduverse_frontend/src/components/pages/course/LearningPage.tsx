@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useParams } from 'react-router-dom';
+// Enhanced LearningPage.tsx with integrated progress persistence
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -16,12 +16,9 @@ import {
   Loader,
   AlertCircle,
   Lock,
-  HelpCircle,
   Trophy,
   Star,
   XCircle,
-  Download,
-  Calendar,
   User,
   Brain,
   Target,
@@ -36,6 +33,10 @@ import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 import { motion, useScroll } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';
 
+// Import the enhanced hooks and storage
+import { useLearningProgress, useReadingProgress as useReadingProgressHook } from '../../../hooks/useLearningProgress';
+import { ProgressStorageService } from '../../../services/progressStorage';
+
 // Types matching Motoko backend
 interface Module {
   moduleId: number;
@@ -47,6 +48,7 @@ interface Module {
 interface CourseMaterial {
   courseId: number;
   modules: Module[];
+  title?: string; // Added for better progress tracking
 }
 
 interface CourseInfo {
@@ -115,7 +117,7 @@ interface Certificate {
   };
 }
 
-// Helper function to convert BigInt values
+// Helper functions
 const convertBigIntToString = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj === 'bigint') return Number(obj);
@@ -130,22 +132,59 @@ const convertBigIntToString = (obj: any): any => {
   return obj;
 };
 
-// Function to truncate title
 const truncateTitle = (title: string, maxLength: number = 50) => {
   if (title.length <= maxLength) return title;
   return title.substring(0, maxLength) + '...';
 };
 
-// Markdown-like content renderer
-const ContentRenderer: React.FC<{ content: string }> = ({ content }) => {
+// Fixed Content Renderer with proper key handling
+const ContentRenderer: React.FC<{
+  content: string;
+  onProgressUpdate?: (progress: number) => void;
+}> = ({ content, onProgressUpdate }) => {
+  const [visibleElements, setVisibleElements] = useState(new Set<number>());
   const lines = content.split('\n');
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const index = parseInt(entry.target.getAttribute('data-index') || '0');
+          if (entry.isIntersecting) {
+            setVisibleElements((prev) => new Set([...prev, index]));
+          }
+        });
+      },
+      { threshold: 0.7 }
+    );
+
+    // Observe all content elements
+    document.querySelectorAll('[data-index]').forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, [content]);
+
+  useEffect(() => {
+    if (onProgressUpdate && lines.length > 0) {
+      const progress = (visibleElements.size / lines.length) * 100;
+      onProgressUpdate(Math.min(progress, 100));
+    }
+  }, [visibleElements, lines.length, onProgressUpdate]);
 
   return (
     <div className="prose prose-slate max-w-none">
       {lines.map((line, index) => {
+        // Extract key and other props separately to fix the warning
+        const key = `line-${index}`;
+        const dataIndex = index;
+
         if (line.startsWith('**') && line.endsWith('**')) {
           return (
-            <h3 key={index} className="mt-6 mb-3 text-lg font-bold text-gray-800">
+            <h3 
+              key={key}
+              data-index={dataIndex} 
+              className="mt-6 mb-3 text-lg font-bold text-gray-800"
+            >
               {line.replace(/\*\*/g, '')}
             </h3>
           );
@@ -153,28 +192,44 @@ const ContentRenderer: React.FC<{ content: string }> = ({ content }) => {
           const match = line.match(/- \*\*(.*?)\*\*: (.*)/);
           if (match) {
             return (
-              <li key={index} className="mb-2 ml-6 list-disc text-white">
+              <li 
+                key={key}
+                data-index={dataIndex} 
+                className="mb-2 ml-6 list-disc text-white"
+              >
                 <strong className="text-blue-600">{match[1]}</strong>: {match[2]}
               </li>
             );
           }
         } else if (line.startsWith('- ')) {
           return (
-            <li key={index} className="mb-1 ml-6 list-disc text-white">
+            <li 
+              key={key}
+              data-index={dataIndex} 
+              className="mb-1 ml-6 list-disc text-white"
+            >
               {line.substring(2)}
             </li>
           );
         } else if (line.match(/^\d+\. /)) {
           return (
-            <li key={index} className="mb-1 ml-6 list-decimal text-white">
+            <li 
+              key={key}
+              data-index={dataIndex} 
+              className="mb-1 ml-6 list-decimal text-white"
+            >
               {line.replace(/^\d+\. /, '')}
             </li>
           );
         } else if (line.trim() === '') {
-          return <br key={index} />;
+          return <br key={key} />;
         } else {
           return (
-            <p key={index} className="mb-4 leading-relaxed text-white">
+            <p 
+              key={key}
+              data-index={dataIndex} 
+              className="mb-4 leading-relaxed text-white"
+            >
               {line}
             </p>
           );
@@ -184,6 +239,7 @@ const ContentRenderer: React.FC<{ content: string }> = ({ content }) => {
   );
 };
 
+// Enhanced Code Block Component
 const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -208,7 +264,7 @@ const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
   );
 };
 
-// Quiz Component
+// Quiz Component (keeping existing implementation with minor fixes)
 const QuizComponent: React.FC<{
   quiz: CourseQuiz;
   onSubmit: (answers: number[]) => Promise<void>;
@@ -405,7 +461,7 @@ const QuizComponent: React.FC<{
   );
 };
 
-// Certificate Display Component
+// Certificate Display Component (keeping existing implementation)
 const CertificateDisplay: React.FC<{
   certificate: Certificate;
   onViewCertificate: () => void;
@@ -499,9 +555,11 @@ const LoadingSpinner: React.FC<{ message?: string }> = ({ message = 'Loading...'
 export default function LearningPage() {
   // Get courseId from URL params
   const { courseId } = useParams<{ courseId: string }>();
-  const [currentModuleIndex, setCurrentModuleIndex] = useState(0);
-  const [completedModules, setCompletedModules] = useState<number[]>([]);
+
+  // Basic states
   const [currentView, setCurrentView] = useState<'learning' | 'quiz' | 'certificate'>('learning');
+  const [scrolled, setScrolled] = useState(false);
+  const { scrollYProgress } = useScroll();
 
   // Backend data states
   const [courseMaterial, setCourseMaterial] = useState<CourseMaterial | null>(null);
@@ -511,8 +569,6 @@ export default function LearningPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const { scrollYProgress } = useScroll();
 
   // Quiz and Certificate states
   const [currentQuiz, setCurrentQuiz] = useState<CourseQuiz | null>(null);
@@ -524,6 +580,25 @@ export default function LearningPage() {
 
   // Actor state
   const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
+
+  // Single storage instance
+  const storage = useMemo(() => new ProgressStorageService(), []);
+
+  // Enhanced Learning Progress Hook Integration
+  const [learningState, learningActions] = useLearningProgress(
+    Number(courseId) || 0,
+    courseMaterial,
+    actor
+  );
+
+  // Reading progress hook for current module
+  const { progress: readingProgress, updateProgress: updateReadingProgress } = useReadingProgressHook(
+    Number(courseId) || 0,
+    learningState.currentModule?.moduleId || 0,
+    (progress) => {
+      learningActions.updateReadingProgress(progress);
+    }
+  );
 
   // Initialize actor
   useEffect(() => {
@@ -542,6 +617,13 @@ export default function LearningPage() {
 
     initActor();
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = scrollYProgress.on('change', (v) => {
+      setScrolled(v !== 0);
+    });
+    return () => unsubscribe();
+  }, [scrollYProgress]);
 
   // Initialize and fetch data
   useEffect(() => {
@@ -578,34 +660,18 @@ export default function LearningPage() {
 
           if ('ok' in materialsResult) {
             const convertedMaterials = convertBigIntToString(materialsResult.ok);
-            setCourseMaterial(convertedMaterials);
+            // Add course title to materials for better progress tracking
+            const enhancedMaterials = {
+              ...convertedMaterials,
+              title: convertedCourse[0].title
+            };
+            setCourseMaterial(enhancedMaterials);
 
-            // Fetch user progress
-            const progressResult = await actor.getMyProgress(courseIdNum);
-            if (progressResult && progressResult.length > 0) {
-              const convertedProgress = convertBigIntToString(progressResult[0]);
-              setUserProgress(convertedProgress);
-              setCompletedModules(convertedProgress.completedModules || []);
-            }
-
-            // Fetch quiz results
-            const quizResultsData = await actor.getMyQuizResults(courseIdNum);
-            const convertedQuizResults = convertBigIntToString(quizResultsData);
-            setQuizResults(convertedQuizResults || []);
-
-            // Check for certificate
-            const certificates = await actor.getMyCertificates();
-            const convertedCertificates = convertBigIntToString(certificates);
-            const courseCert = convertedCertificates.find(
-              (cert: Certificate) => cert.courseId === Number(courseIdNum)
-            );
-            if (courseCert) {
-              setUserCertificate(courseCert);
-              setCurrentView('certificate');
-            }
+            // Restore progress from backend and local state
+            await restoreUserProgress(courseIdNum);
 
             // Try to load final quiz data from backend
-            await loadFinalQuizData(Number(courseIdNum));
+            await loadFinalQuizData(Number(courseIdNum), enhancedMaterials);
           } else {
             setError(materialsResult.err || 'Failed to load course materials');
           }
@@ -622,34 +688,78 @@ export default function LearningPage() {
     fetchData();
   }, [actor, courseId]);
 
+  // Restore user progress from both backend and local storage
+  const restoreUserProgress = async (courseIdNum: bigint) => {
+    try {
+      // Fetch backend progress
+      const progressResult = await actor!.getMyProgress(courseIdNum);
+      if (progressResult && progressResult.length > 0) {
+        const convertedProgress = convertBigIntToString(progressResult[0]);
+        setUserProgress(convertedProgress);
+      }
+
+      // Fetch quiz results
+      const quizResultsData = await actor!.getMyQuizResults(courseIdNum);
+      const convertedQuizResults = convertBigIntToString(quizResultsData);
+      setQuizResults(convertedQuizResults || []);
+
+      // Check for certificate
+      const certificates = await actor!.getMyCertificates();
+      const convertedCertificates = convertBigIntToString(certificates);
+      const courseCert = convertedCertificates.find(
+        (cert: Certificate) => cert.courseId === Number(courseIdNum)
+      );
+
+      if (courseCert) {
+        setUserCertificate(courseCert);
+        // If user has certificate, show it automatically
+        setCurrentView('certificate');
+        return;
+      }
+
+    } catch (error) {
+      console.error('Error restoring progress:', error);
+    }
+  };
+
   // Load final quiz data from backend
-  const loadFinalQuizData = async (courseIdNum: number) => {
-    if (!actor || !courseMaterial) return;
+  const loadFinalQuizData = async (courseIdNum: number, materials: CourseMaterial) => {
+    if (!actor) return;
 
     try {
       // Try to get quiz for the last module or a general final quiz
-      // For now, let's try to get quiz for moduleId 999 (which is commonly used for final quizzes)
       const finalQuizResult = await actor.getQuiz(BigInt(courseIdNum), BigInt(999));
 
       if ('ok' in finalQuizResult) {
         const convertedQuiz = convertBigIntToString(finalQuizResult.ok);
         setFinalQuizData(convertedQuiz);
       } else {
-        // If no specific final quiz exists, we can create one from all module quizzes
-        // or use the existing logic to create a sample quiz
-        console.log('No final quiz found in backend, using fallback');
+        // Create fallback quiz from existing modules
+        const fallbackQuiz: CourseQuiz = {
+          courseId: courseIdNum,
+          moduleId: 999,
+          title: 'Final Assessment - ' + courseInfo?.title,
+          questions: materials.modules.map((module, index) => ({
+            questionId: index + 1,
+            question: `What is the main concept covered in "${module.title}"?`,
+            options: [
+              'Basic understanding of the topic',
+              'Advanced implementation techniques',
+              'Practical applications and examples',
+              'Theoretical foundations',
+            ],
+            correctAnswer: 1,
+            explanation: `This covers the core concepts from the module: ${module.title}`,
+          })),
+          passingScore: 75,
+          timeLimit: 900,
+        };
+        setFinalQuizData(fallbackQuiz);
       }
     } catch (error) {
       console.log('Error loading final quiz from backend:', error);
     }
   };
-
-  useEffect(() => {
-    const unsubscribe = scrollYProgress.on('change', (v) => {
-      setScrolled(v !== 0);
-    });
-    return () => unsubscribe();
-  }, [scrollYProgress]);
 
   // Handle enrollment
   const handleEnroll = async () => {
@@ -662,6 +772,8 @@ export default function LearningPage() {
       if ('ok' in result) {
         toast.success(result.ok);
         setIsEnrolled(true);
+
+        // Reload the page to fetch enrolled content
         window.location.reload();
       } else {
         setError(result.err || 'Failed to enroll in course');
@@ -675,33 +787,18 @@ export default function LearningPage() {
     }
   };
 
-  // Helper functions
+  // Helper functions using learning state
   const isModuleLocked = (moduleIndex: number) => {
     if (moduleIndex === 0) return false;
-    return !completedModules.includes(courseMaterial?.modules[moduleIndex - 1]?.moduleId || 0);
+    const prevModule = courseMaterial?.modules[moduleIndex - 1];
+    return prevModule && !learningState.completedModules.includes(prevModule.moduleId);
   };
 
   const canAccessQuiz = () => {
     if (!courseMaterial) return false;
-    return courseMaterial.modules.every((module) => completedModules.includes(module.moduleId));
-  };
-
-  const allQuizzesPassed = () => {
-    if (!courseMaterial) return false;
-    return courseMaterial.modules.every((module) =>
-      quizResults.some((result) => result.moduleId === module.moduleId && result.passed)
+    return courseMaterial.modules.every((module) => 
+      learningState.completedModules.includes(module.moduleId)
     );
-  };
-
-  const handleCompleteModule = async (moduleIndex: number) => {
-    if (!courseMaterial || !actor || !courseId) return;
-
-    const currentModule = courseMaterial.modules[moduleIndex];
-
-    if (!completedModules.includes(currentModule.moduleId)) {
-      setCompletedModules((prev) => [...prev, currentModule.moduleId]);
-      toast.success('Module completed!');
-    }
   };
 
   const handleModuleClick = (moduleIndex: number) => {
@@ -710,7 +807,7 @@ export default function LearningPage() {
       return;
     }
 
-    setCurrentModuleIndex(moduleIndex);
+    learningActions.goToModule(moduleIndex);
     setCurrentView('learning');
   };
 
@@ -720,13 +817,10 @@ export default function LearningPage() {
     setIsLoadingQuiz(true);
 
     try {
-      let quizToUse = null;
+      let quizToUse = finalQuizData;
 
-      // First try to use the final quiz from backend if available
-      if (finalQuizData) {
-        quizToUse = finalQuizData;
-      } else {
-        // Fallback to creating a quiz from backend data or sample data
+      if (!quizToUse) {
+        // Fallback quiz creation
         quizToUse = {
           courseId: Number(courseId),
           moduleId: 999,
@@ -744,7 +838,7 @@ export default function LearningPage() {
             explanation: `This covers the core concepts from the module: ${module.title}`,
           })),
           passingScore: 75,
-          timeLimit: 900, // 15 minutes
+          timeLimit: 900,
         };
       }
 
@@ -786,7 +880,7 @@ export default function LearningPage() {
           if (result.passed) {
             toast.success(`Quiz passed with ${result.score}%! Generating certificate...`);
 
-            // The backend should automatically generate certificate, let's check for it
+            // Complete the course using learning actions
             setTimeout(async () => {
               try {
                 const certificates = await actor.getMyCertificates();
@@ -798,6 +892,10 @@ export default function LearningPage() {
                 if (courseCert) {
                   setUserCertificate(courseCert);
                   setCurrentView('certificate');
+
+                  // Complete course in learning state
+                  await learningActions.completeCourse(courseCert.tokenId);
+
                   toast.success('🎉 Congratulations! Your certificate has been generated!');
                 }
               } catch (error) {
@@ -838,7 +936,7 @@ export default function LearningPage() {
         if (passed) {
           toast.success(`Quiz passed with ${score}%! Generating certificate...`);
 
-          setTimeout(() => {
+          setTimeout(async () => {
             const certificate: Certificate = {
               tokenId: Date.now(),
               userId: 'current-user',
@@ -857,6 +955,10 @@ export default function LearningPage() {
 
             setUserCertificate(certificate);
             setCurrentView('certificate');
+
+            // Complete course in learning state
+            await learningActions.completeCourse(certificate.tokenId);
+
             toast.success('🎉 Congratulations! Your certificate has been generated!');
           }, 1000);
         } else {
@@ -875,10 +977,16 @@ export default function LearningPage() {
   };
 
   // Loading state
-  if (loading || !actor) {
+  if (loading || !actor || learningState.isLoading) {
     return (
       <LoadingSpinner
-        message={!actor ? 'Initializing connection...' : 'Loading course materials...'}
+        message={
+          !actor 
+            ? 'Initializing connection...' 
+            : learningState.isLoading 
+              ? 'Loading progress...'
+              : 'Loading course materials...'
+        }
       />
     );
   }
@@ -933,9 +1041,8 @@ export default function LearningPage() {
     );
   }
 
-  const currentModule = courseMaterial.modules[currentModuleIndex];
-  const progressPercentage = (completedModules.length / courseMaterial.modules.length) * 100;
-  const allLearningCompleted = completedModules.length === courseMaterial.modules.length;
+  const currentModule = learningState.currentModule;
+  const allLearningCompleted = learningState.completedModules.length === courseMaterial.modules.length;
 
   if (currentView === 'certificate' && userCertificate) {
     return (
@@ -1016,11 +1123,23 @@ export default function LearningPage() {
 
             {/* Right Section */}
             <div className="flex items-center space-x-6">
-              {/* Module Info */}
+              {/* Module Info with Reading Progress */}
               <div className="hidden items-center space-x-3 sm:flex">
                 <div className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1">
                   <span className="text-xs font-medium text-blue-400">
-                    Module {currentModuleIndex + 1}/{courseMaterial.modules.length}
+                    Module {learningState.currentModuleIndex + 1}/{courseMaterial.modules.length}
+                  </span>
+                </div>
+                {/* Reading Progress Indicator */}
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-16 rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-green-500 transition-all duration-300"
+                      style={{ width: `${learningState.readingProgress}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    {Math.round(learningState.readingProgress)}% read
                   </span>
                 </div>
               </div>
@@ -1030,7 +1149,7 @@ export default function LearningPage() {
                 <div className="text-right">
                   <div className="text-xs font-medium text-slate-300">Progress</div>
                   <div className="text-lg font-bold text-white">
-                    {Math.round(progressPercentage)}%
+                    {Math.round(learningState.overallProgress)}%
                   </div>
                 </div>
                 <div className="relative h-12 w-12 transform cursor-pointer transition-all duration-300 hover:scale-110 active:scale-95">
@@ -1053,7 +1172,7 @@ export default function LearningPage() {
                       strokeWidth="3"
                       strokeLinecap="round"
                       fill="transparent"
-                      strokeDasharray={`${progressPercentage}, 100`}
+                      strokeDasharray={`${learningState.overallProgress}, 100`}
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                       style={{
                         strokeDashoffset: 0,
@@ -1064,15 +1183,9 @@ export default function LearningPage() {
                   {/* Center Text with animation */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-xs font-bold text-blue-400 transition-all duration-300">
-                      {Math.round(progressPercentage)}
+                      {Math.round(learningState.overallProgress)}
                     </span>
                   </div>
-
-                  {/* Ripple effect on click */}
-                  <div
-                    className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-blue-500/20 opacity-0"
-                    id="ripple"
-                  ></div>
                 </div>
               </div>
             </div>
@@ -1100,12 +1213,16 @@ export default function LearningPage() {
                   {courseMaterial.modules.map((module, index) => {
                     const isUnlocked =
                       index === 0 ||
-                      completedModules.includes(courseMaterial.modules[index - 1]?.moduleId);
-                    const isCompleted = completedModules.includes(module.moduleId);
-                    const isCurrent = currentModuleIndex === index;
+                      learningState.completedModules.includes(courseMaterial.modules[index - 1]?.moduleId);
+                    const isCompleted = learningState.completedModules.includes(module.moduleId);
+                    const isCurrent = learningState.currentModuleIndex === index;
                     const hasPassedQuiz = quizResults.some(
                       (r) => r.moduleId === module.moduleId && r.passed
                     );
+
+                    // Get local reading progress for this module
+                    const moduleReadingProgress =
+                      learningState.courseProgress?.moduleProgresses[module.moduleId]?.readingProgress || 0;
 
                     return (
                       <button
@@ -1169,7 +1286,26 @@ export default function LearningPage() {
                             >
                               Module {index + 1}
                               {hasPassedQuiz && <span className="ml-1">⭐</span>}
+                              {moduleReadingProgress > 0 && moduleReadingProgress < 100 && (
+                                <span className="ml-1 text-orange-400">
+                                  ({Math.round(moduleReadingProgress)}% read)
+                                </span>
+                              )}
                             </div>
+
+                            {/* Reading progress bar */}
+                            {isUnlocked && moduleReadingProgress > 0 && (
+                              <div className="mt-2">
+                                <div className="h-1 w-full rounded-full bg-slate-600">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      isCompleted ? 'bg-green-400' : 'bg-blue-400'
+                                    }`}
+                                    style={{ width: `${moduleReadingProgress}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </button>
@@ -1203,6 +1339,33 @@ export default function LearningPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Learning Statistics */}
+                {learningState.statistics && (
+                  <div className="mt-4 rounded-lg bg-slate-800/40 p-4">
+                    <h4 className="mb-3 text-sm font-semibold text-slate-300">Learning Stats</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Total Time:</span>
+                        <span className="text-white">
+                          {Math.floor(learningState.statistics.totalTimeSpent / 60)} min
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Bookmarks:</span>
+                        <span className="text-white">{learningState.statistics.bookmarkCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Notes:</span>
+                        <span className="text-white">{learningState.statistics.noteCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Completion:</span>
+                        <span className="text-white">{Math.round(learningState.statistics.completionRate)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             </div>
           </div>
@@ -1211,81 +1374,158 @@ export default function LearningPage() {
           <div className="lg:col-span-3">
             <div className="space-y-8">
               {/* Module Header */}
-              <motion.div
-                className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
-                transition={MOTION_TRANSITION}
-                initial={{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(10px)' }}
-                whileInView={{ opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' }}
-                viewport={{ once: true, amount: 0.2 }}
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
-                    Module {currentModuleIndex + 1}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <Clock className="h-4 w-4" />
-                    ~15 min read
-                  </div>
-                </div>
-                <h2
-                  className="mb-6 text-3xl leading-tight font-bold text-white"
-                  title={currentModule.title}
+              {currentModule && (
+                <motion.div
+                  className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
+                  transition={MOTION_TRANSITION}
+                  initial={{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(10px)' }}
+                  whileInView={{ opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' }}
+                  viewport={{ once: true, amount: 0.2 }}
                 >
-                  {currentModule.title}
-                </h2>
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+                      Module {learningState.currentModuleIndex + 1}
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-gray-400">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        ~15 min read
+                      </div>
+                      {learningState.timeSpent > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Timer className="h-4 w-4" />
+                          {Math.floor(learningState.timeSpent / 60)}m spent
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <h2
+                    className="mb-6 text-3xl leading-tight font-bold text-white"
+                    title={currentModule.title}
+                  >
+                    {currentModule.title}
+                  </h2>
 
-                {/* Module Status Badge */}
-                <div className="flex justify-end">
-                  {completedModules.includes(currentModule.moduleId) ? (
-                    <div className="flex items-center gap-1 rounded-full bg-green-500 px-3 py-1 text-sm font-medium text-white shadow-lg">
-                      <CheckCircle size={16} />
-                      Completed
+                  {/* Module Status and Actions */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {learningState.completedModules.includes(currentModule.moduleId) ? (
+                        <div className="flex items-center gap-1 rounded-full bg-green-500 px-3 py-1 text-sm font-medium text-white shadow-lg">
+                          <CheckCircle size={16} />
+                          Completed
+                        </div>
+                      ) : (
+                        <div className="bg-primary rounded-full px-3 py-1 text-sm font-medium text-white shadow-lg">
+                          In Progress
+                        </div>
+                      )}
+
+                      {/* Reading Progress */}
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-20 rounded-full bg-slate-600">
+                          <div
+                            className="h-full rounded-full bg-blue-400 transition-all duration-300"
+                            style={{ width: `${learningState.readingProgress}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-slate-400">{Math.round(learningState.readingProgress)}%</span>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="bg-primary rounded-full px-3 py-1 text-sm font-medium text-white shadow-lg">
-                      In Progress
+
+                    {/* Module Actions */}
+                    <div className="flex items-center gap-2">
+                      {/* Bookmark Button */}
+                      <button
+                        onClick={() => learningActions.toggleBookmark(currentModule.moduleId)}
+                        className={`rounded-lg p-2 text-sm transition-colors ${
+                          learningState.bookmarkedModules.includes(currentModule.moduleId)
+                            ? 'bg-yellow-500 text-white'
+                            : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                        }`}
+                      >
+                        <Star size={16} />
+                      </button>
+
+                      {/* Notes Button */}
+                      <button
+                        onClick={() => {
+                          const currentNote = learningState.moduleNotes[currentModule.moduleId] || '';
+                          const note = prompt('Add a note for this module:', currentNote);
+                          if (note !== null) {
+                            learningActions.saveNote(note, currentModule.moduleId);
+                          }
+                        }}
+                        className={`rounded-lg p-2 text-sm transition-colors ${
+                          learningState.moduleNotes[currentModule.moduleId]
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                        }`}
+                      >
+                        <FileText size={16} />
+                      </button>
                     </div>
-                  )}
-                </div>
-              </motion.div>
+                  </div>
+                </motion.div>
+              )}
 
               {/* Content */}
-              <motion.div
-                className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
-                transition={MOTION_TRANSITION}
-                initial={{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(10px)' }}
-                whileInView={{ opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' }}
-                viewport={{ once: true, amount: 0.2 }}
-              >
-                <h3 className="mb-6 flex items-center gap-2 text-xl font-bold text-white">
-                  <FileText className="h-5 w-5 text-blue-400" />
-                  Learning Material
-                </h3>
+              {currentModule && (
+                <motion.div
+                  className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
+                  transition={MOTION_TRANSITION}
+                  initial={{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(10px)' }}
+                  whileInView={{ opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' }}
+                  viewport={{ once: true, amount: 0.2 }}
+                >
+                  <h3 className="mb-6 flex items-center gap-2 text-xl font-bold text-white">
+                    <FileText className="h-5 w-5 text-blue-400" />
+                    Learning Material
+                  </h3>
 
-                <div className="rounded-lg border border-slate-600/50 bg-slate-900/50 p-6">
-                  <ContentRenderer content={currentModule.content} />
+                  <div className="rounded-lg border border-slate-600/50 bg-slate-900/50 p-6">
+                    <ContentRenderer
+                      content={currentModule.content}
+                      onProgressUpdate={updateReadingProgress}
+                    />
 
-                  <div className="mt-6 border-t border-slate-600/50 pt-4">
-                    {!completedModules.includes(currentModule.moduleId) ? (
-                      <button
-                        onClick={() => handleCompleteModule(currentModuleIndex)}
-                        className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 font-medium text-white transition-all duration-200 hover:scale-105 hover:from-green-600 hover:to-green-700 hover:shadow-lg"
-                      >
-                        <CheckCircle className="h-4 w-4" />
-                        Mark as Completed
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2 text-green-400">
-                        <CheckCircle size={20} />
-                        <span className="font-medium">Module completed</span>
+                    {/* Show saved note if exists */}
+                    {learningState.moduleNotes[currentModule.moduleId] && (
+                      <div className="mt-6 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+                        <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-400">
+                          <FileText size={14} />
+                          Your Note
+                        </h4>
+                        <p className="text-sm text-blue-100">
+                          {learningState.moduleNotes[currentModule.moduleId]}
+                        </p>
                       </div>
                     )}
+
+                    <div className="mt-6 border-t border-slate-600/50 pt-4">
+                      {!learningState.completedModules.includes(currentModule.moduleId) ? (
+                        <button
+                          onClick={() => learningActions.completeCurrentModule()}
+                          disabled={learningState.readingProgress < 80} // Require 80% reading progress
+                          className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 font-medium text-white transition-all duration-200 hover:scale-105 hover:from-green-600 hover:to-green-700 hover:shadow-lg disabled:cursor-not-allowed disabled:from-gray-500 disabled:to-gray-600 disabled:opacity-50"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                          {learningState.readingProgress < 80
+                            ? `Read ${80 - Math.round(learningState.readingProgress)}% more to complete`
+                            : 'Mark as Completed'}
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 text-green-400">
+                          <CheckCircle size={20} />
+                          <span className="font-medium">Module completed</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </motion.div>
+                </motion.div>
+              )}
 
               {/* Code Example */}
-              {currentModule.codeExample && (
+              {currentModule && currentModule.codeExample && (
                 <motion.div
                   className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow-xl backdrop-blur-sm"
                   transition={MOTION_TRANSITION}
@@ -1310,9 +1550,9 @@ export default function LearningPage() {
                 viewport={{ once: true, amount: 0.2 }}
               >
                 <div>
-                  {currentModuleIndex > 0 ? (
+                  {learningState.currentModuleIndex > 0 ? (
                     <button
-                      onClick={() => handleModuleClick(currentModuleIndex - 1)}
+                      onClick={() => learningActions.goToPreviousModule()}
                       className="flex items-center gap-2 font-medium text-gray-300 transition-colors hover:text-white"
                     >
                       <ChevronLeft className="h-4 w-4" />
@@ -1325,10 +1565,11 @@ export default function LearningPage() {
 
                 <span className="text-center text-gray-400">
                   <div>
-                    Module {currentModuleIndex + 1} of {courseMaterial.modules.length}
+                    Module {learningState.currentModuleIndex + 1} of {courseMaterial.modules.length}
                   </div>
-                  {currentModuleIndex < courseMaterial.modules.length - 1 &&
-                    !completedModules.includes(currentModule.moduleId) && (
+                  {learningState.currentModuleIndex < courseMaterial.modules.length - 1 &&
+                    currentModule &&
+                    !learningState.completedModules.includes(currentModule.moduleId) && (
                       <div className="mt-1 flex items-center justify-center gap-1 text-xs text-orange-400">
                         <Lock size={12} />
                         Complete this module to unlock next
@@ -1337,17 +1578,17 @@ export default function LearningPage() {
                 </span>
 
                 <div className="flex items-center gap-4">
-                  {currentModuleIndex < courseMaterial.modules.length - 1 && (
+                  {learningState.currentModuleIndex < courseMaterial.modules.length - 1 && (
                     <button
-                      onClick={() => handleModuleClick(currentModuleIndex + 1)}
-                      disabled={isModuleLocked(currentModuleIndex + 1)}
+                      onClick={() => learningActions.goToNextModule()}
+                      disabled={isModuleLocked(learningState.currentModuleIndex + 1)}
                       className={`flex items-center gap-2 rounded-lg px-5 py-2.5 font-medium transition-all duration-200 ${
-                        isModuleLocked(currentModuleIndex + 1)
+                        isModuleLocked(learningState.currentModuleIndex + 1)
                           ? 'cursor-not-allowed bg-gray-700 text-gray-500'
                           : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:scale-105 hover:from-blue-600 hover:to-blue-700 hover:shadow-lg'
                       }`}
                     >
-                      {isModuleLocked(currentModuleIndex + 1) ? (
+                      {isModuleLocked(learningState.currentModuleIndex + 1) ? (
                         <>
                           <Lock size={16} />
                           Locked
@@ -1361,8 +1602,9 @@ export default function LearningPage() {
                     </button>
                   )}
 
-                  {currentModuleIndex === courseMaterial.modules.length - 1 &&
-                    completedModules.includes(currentModule.moduleId) && (
+                  {learningState.currentModuleIndex === courseMaterial.modules.length - 1 &&
+                    currentModule &&
+                    learningState.completedModules.includes(currentModule.moduleId) && (
                       <button className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-5 py-2.5 font-medium text-white transition-all duration-200 hover:scale-105 hover:from-green-600 hover:to-green-700 hover:shadow-lg">
                         <Award className="h-4 w-4" />
                         Complete Course
@@ -1550,13 +1792,13 @@ export default function LearningPage() {
                         <div className="mb-2 flex justify-between text-sm text-gray-400">
                           <span>Learning Progress</span>
                           <span>
-                            {completedModules.length} of {courseMaterial.modules.length} modules
+                            {learningState.completedModules.length} of {courseMaterial.modules.length} modules
                           </span>
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-slate-700">
                           <div
                             className="from-primary to-primary/80 h-full bg-gradient-to-r transition-all duration-300"
-                            style={{ width: `${progressPercentage}%` }}
+                            style={{ width: `${learningState.overallProgress}%` }}
                           ></div>
                         </div>
                       </div>
@@ -1569,14 +1811,14 @@ export default function LearningPage() {
                         <ul className="ml-6 space-y-1">
                           {courseMaterial.modules.map((module, index) => (
                             <li key={module.moduleId} className="flex items-center gap-2">
-                              {completedModules.includes(module.moduleId) ? (
+                              {learningState.completedModules.includes(module.moduleId) ? (
                                 <CheckCircle size={14} className="text-green-400" />
                               ) : (
                                 <div className="border-primary/50 h-3.5 w-3.5 rounded-full border-2"></div>
                               )}
                               <span
                                 className={
-                                  completedModules.includes(module.moduleId)
+                                  learningState.completedModules.includes(module.moduleId)
                                     ? 'text-green-300 line-through'
                                     : 'text-gray-300'
                                 }
@@ -1616,7 +1858,7 @@ export default function LearningPage() {
                     </button>
                     <button
                       onClick={() => {
-                        setCurrentModuleIndex(0);
+                        learningActions.goToModule(0);
                       }}
                       className="flex items-center gap-2 rounded-lg border border-gray-400 bg-slate-700/60 px-6 py-3 font-medium text-gray-200 transition-all duration-200 hover:scale-105 hover:bg-slate-700/80"
                     >

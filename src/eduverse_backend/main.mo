@@ -71,7 +71,7 @@ persistent actor EduverseBackend {
     }
   };
 
-  // === USER FUNCTIONS ===
+  // === USER FUNCTIONS === 
   public shared({ caller }) func updateUser(name: Text, email: ?Text): async Result.Result<Text, Text> {
     userManager.updateUser(caller, name, email)
   };
