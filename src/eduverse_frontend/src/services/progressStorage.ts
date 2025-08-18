@@ -1,5 +1,5 @@
 // services/progressStorage.ts
-// Enhanced progress storage service with unified keys and better error handling
+// FIXED: User-specific progress storage service
 
 export interface LearningProgress {
   courseId: number;
@@ -25,193 +25,164 @@ export interface CourseProgress {
   certificateId?: number;
 }
 
-export interface ProgressSyncData {
+// FIXED: Now truly user-specific
+export interface UserProgressData {
   userId: string;
   courses: { [courseId: number]: CourseProgress };
   lastSyncAt: number;
-  version: string; // For migration purposes
+  version: string;
+}
+
+// FIXED: Global storage format for multiple users
+export interface GlobalProgressData {
+  users: { [userId: string]: UserProgressData };
+  version: string;
+  lastUpdated: number;
 }
 
 export class ProgressStorageService {
-  // Unified storage keys - same as original LearningProgressManager
-  private readonly STORAGE_KEY = 'eduverse_learning_progress';
-  private readonly SYNC_KEY = 'eduverse_sync_queue';
+  // FIXED: User-specific storage keys
+  private readonly BASE_STORAGE_KEY = 'eduverse_learning_progress';
+  private readonly BASE_SYNC_KEY = 'eduverse_sync_queue';
   private readonly MAX_STORAGE_SIZE = 5 * 1024 * 1024; // 5MB limit
-  private readonly STORAGE_VERSION = '2.0';
+  private readonly STORAGE_VERSION = '3.0'; // Bumped version for user-specific storage
 
-  constructor(private userId?: string) {
+  constructor(private userId: string) {
+    if (!this.userId) {
+      throw new Error('UserId is required for ProgressStorageService');
+    }
     this.migrateFromOldStorage();
   }
 
-  // ===== MIGRATION FROM OLD STORAGE =====
+  // FIXED: User-specific storage key
+  private getUserStorageKey(): string {
+    return `${this.BASE_STORAGE_KEY}_${this.userId}`;
+  }
+
+  // FIXED: User-specific sync key
+  private getUserSyncKey(): string {
+    return `${this.BASE_SYNC_KEY}_${this.userId}`;
+  }
 
   /**
-   * Migrate from old storage format to new unified format
+   * FIXED: Migration now preserves user-specific data
    */
   private migrateFromOldStorage(): void {
     try {
-      const oldStorageKey = 'eduverse_progress_v2';
-      const oldData = localStorage.getItem(oldStorageKey);
-      const currentData = localStorage.getItem(this.STORAGE_KEY);
+      const oldGlobalKey = 'eduverse_learning_progress';
+      const userSpecificKey = this.getUserStorageKey();
 
-      if (oldData && !currentData) {
-        console.log('Migrating progress data to unified format...');
-
-        // Parse old data
-        const parsed = JSON.parse(oldData);
-
-        // Convert to new format
-        const newData: ProgressSyncData = {
-          userId: this.userId || parsed.userId || 'anonymous',
-          courses: parsed.courses || {},
-          lastSyncAt: parsed.lastSyncAt || Date.now(),
-          version: this.STORAGE_VERSION,
-        };
-
-        // Save in new format
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(newData));
-
-        // Remove old storage
-        localStorage.removeItem(oldStorageKey);
-
-        console.log('Migration completed successfully');
+      // Don't migrate if user-specific storage already exists
+      if (localStorage.getItem(userSpecificKey)) {
+        console.log(`✅ User-specific storage already exists for: ${this.userId.slice(0, 20)}...`);
+        return;
       }
 
-      // Also check for very old format (LocalLearningState)
-      const veryOldData = this.getAllProgress();
-      if (veryOldData.courses && Object.keys(veryOldData.courses).length === 0) {
-        this.migrateVeryOldFormat();
-      }
-    } catch (error) {
-      console.warn('Error during storage migration:', error);
-    }
-  }
+      // Check for old global storage
+      const oldGlobalData = localStorage.getItem(oldGlobalKey);
+      if (oldGlobalData) {
+        try {
+          const parsed = JSON.parse(oldGlobalData);
 
-  /**
-   * Migrate from very old LocalLearningState format
-   */
-  private migrateVeryOldFormat(): void {
-    try {
-      // Look for individual course progress stored with different keys
-      const storageKeys = Object.keys(localStorage);
-      const courseKeys = storageKeys.filter(
-        (key) => key.startsWith('eduverse_course_') || key.startsWith('course_progress_')
-      );
+          // If old data belongs to this user, migrate it
+          if (parsed.userId === this.userId) {
+            console.log(`📦 Migrating old data for user: ${this.userId.slice(0, 20)}...`);
 
-      if (courseKeys.length > 0) {
-        console.log('Migrating very old progress format...');
+            const userSpecificData: UserProgressData = {
+              userId: this.userId,
+              courses: parsed.courses || {},
+              lastSyncAt: parsed.lastSyncAt || Date.now(),
+              version: this.STORAGE_VERSION,
+            };
 
-        const allData = this.getAllProgress();
-
-        courseKeys.forEach((key) => {
-          try {
-            const courseData = localStorage.getItem(key);
-            if (courseData) {
-              const parsed = JSON.parse(courseData);
-              if (parsed.courseId) {
-                // Convert old format to new CourseProgress format
-                const courseProgress: CourseProgress = this.convertOldToNewFormat(parsed);
-                allData.courses[courseProgress.courseId] = courseProgress;
-              }
-            }
-          } catch (error) {
-            console.warn(`Error migrating course data from ${key}:`, error);
+            localStorage.setItem(userSpecificKey, JSON.stringify(userSpecificData));
+            console.log('✅ Migration completed successfully');
+          } else {
+            console.log(
+              `ℹ️  Old data belongs to different user, creating fresh storage for: ${this.userId.slice(0, 20)}...`
+            );
           }
-        });
+        } catch (error) {
+          console.warn('⚠️  Error parsing old storage data:', error);
+        }
+      }
 
-        // Save migrated data
-        this.saveAllProgress(allData);
-
-        // Clean up old keys
-        courseKeys.forEach((key) => {
-          localStorage.removeItem(key);
-        });
-
-        console.log('Very old format migration completed');
+      // Create fresh storage for this user if no data exists
+      if (!localStorage.getItem(userSpecificKey)) {
+        this.createFreshUserStorage();
       }
     } catch (error) {
-      console.warn('Error during very old format migration:', error);
+      console.warn('⚠️  Error during storage migration:', error);
+      this.createFreshUserStorage();
     }
   }
 
   /**
-   * Convert old LocalLearningState format to new CourseProgress format
+   * FIXED: Create fresh user-specific storage
    */
-  private convertOldToNewFormat(oldData: any): CourseProgress {
-    return {
-      courseId: oldData.courseId,
-      courseName: oldData.courseName || `Course ${oldData.courseId}`,
-      currentModuleIndex: oldData.currentModuleIndex || 0,
-      totalModules: oldData.totalModules || 0,
-      overallProgress: oldData.overallProgress || 0,
-      moduleProgresses: oldData.readingProgress
-        ? this.convertReadingProgressToModuleProgresses(oldData)
-        : {},
-      bookmarks: oldData.bookmarks || [],
-      notes: oldData.notes || {},
-      lastAccessedAt: oldData.lastAccessedAt || Date.now(),
-      isCompleted: oldData.isCompleted || false,
-      certificateId: oldData.certificateId,
+  private createFreshUserStorage(): void {
+    const freshData: UserProgressData = {
+      userId: this.userId,
+      courses: {},
+      lastSyncAt: Date.now(),
+      version: this.STORAGE_VERSION,
     };
+
+    localStorage.setItem(this.getUserStorageKey(), JSON.stringify(freshData));
+    console.log(`✅ Created fresh storage for user: ${this.userId.slice(0, 20)}...`);
   }
 
   /**
-   * Convert old reading progress format to new module progresses format
+   * FIXED: Get progress data for THIS SPECIFIC USER
    */
-  private convertReadingProgressToModuleProgresses(oldData: any): {
-    [moduleId: number]: LearningProgress;
-  } {
-    const moduleProgresses: { [moduleId: number]: LearningProgress } = {};
-
-    if (oldData.readingProgress) {
-      Object.entries(oldData.readingProgress).forEach(([moduleId, progress]) => {
-        const moduleIdNum = parseInt(moduleId);
-        const timeSpent = oldData.timeSpent?.[moduleId] || 0;
-
-        moduleProgresses[moduleIdNum] = {
-          courseId: oldData.courseId,
-          moduleId: moduleIdNum,
-          readingProgress: Number(progress) || 0,
-          timeSpent: Number(timeSpent) || 0,
-          isCompleted: Number(progress) >= 100,
-          lastAccessedAt: Date.now(),
-        };
-      });
-    }
-
-    return moduleProgresses;
-  }
-
-  // ===== CORE STORAGE METHODS =====
-
-  /**
-   * Get all progress data for the current user
-   */
-  getAllProgress(): ProgressSyncData {
+  getAllProgress(): UserProgressData {
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      const defaultData: ProgressSyncData = {
-        userId: this.userId || 'anonymous',
+      const userStorageKey = this.getUserStorageKey();
+      const stored = localStorage.getItem(userStorageKey);
+
+      const defaultData: UserProgressData = {
+        userId: this.userId,
         courses: {},
         lastSyncAt: 0,
         version: this.STORAGE_VERSION,
       };
 
-      if (!stored) return defaultData;
+      if (!stored) {
+        console.log(
+          `ℹ️  No stored data found for user: ${this.userId.slice(0, 20)}..., creating default`
+        );
+        this.saveAllProgress(defaultData);
+        return defaultData;
+      }
 
       const parsed = JSON.parse(stored);
+
+      // Validate that this data belongs to the current user
+      if (parsed.userId !== this.userId) {
+        console.warn(
+          `⚠️  Storage data user mismatch! Expected: ${this.userId.slice(0, 20)}..., Found: ${parsed.userId?.slice(0, 20) || 'unknown'}...`
+        );
+        this.createFreshUserStorage();
+        return defaultData;
+      }
 
       // Ensure version is set
       if (!parsed.version) {
         parsed.version = this.STORAGE_VERSION;
       }
 
+      console.log(
+        `📊 Loaded progress for user: ${this.userId.slice(0, 20)}..., ${Object.keys(parsed.courses || {}).length} courses`
+      );
       return { ...defaultData, ...parsed };
     } catch (error) {
-      console.error('Error getting progress data:', error);
+      console.error(
+        `❌ Error getting progress data for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
       this.handleStorageError('get');
       return {
-        userId: this.userId || 'anonymous',
+        userId: this.userId,
         courses: {},
         lastSyncAt: 0,
         version: this.STORAGE_VERSION,
@@ -220,13 +191,23 @@ export class ProgressStorageService {
   }
 
   /**
-   * Save all progress data with validation
+   * FIXED: Save progress data for THIS SPECIFIC USER
    */
-  saveAllProgress(data: ProgressSyncData): boolean {
+  saveAllProgress(data: UserProgressData): boolean {
     try {
-      // Validate data
+      // CRITICAL: Ensure data belongs to current user
+      if (data.userId !== this.userId) {
+        console.error(
+          `❌ Attempted to save data for different user! Current: ${this.userId.slice(0, 20)}..., Data: ${data.userId?.slice(0, 20) || 'unknown'}...`
+        );
+        return false;
+      }
+
+      // Validate data structure
       if (!this.validateProgressData(data)) {
-        console.error('Invalid progress data, not saving');
+        console.error(
+          `❌ Invalid progress data for user ${this.userId.slice(0, 20)}..., not saving`
+        );
         return false;
       }
 
@@ -234,131 +215,162 @@ export class ProgressStorageService {
       data.lastSyncAt = Date.now();
 
       const serialized = JSON.stringify(data);
+      const userStorageKey = this.getUserStorageKey();
 
       // Check storage size
       if (serialized.length > this.MAX_STORAGE_SIZE) {
-        console.warn('Progress data exceeds storage limit, cleaning up...');
+        console.warn(
+          `⚠️  Progress data exceeds storage limit for user ${this.userId.slice(0, 20)}..., cleaning up...`
+        );
         this.cleanupOldData(data);
         const cleanedSerialized = JSON.stringify(data);
 
         if (cleanedSerialized.length > this.MAX_STORAGE_SIZE) {
-          console.error('Data still too large after cleanup');
+          console.error(
+            `❌ Data still too large after cleanup for user ${this.userId.slice(0, 20)}...`
+          );
           return false;
         }
 
-        localStorage.setItem(this.STORAGE_KEY, cleanedSerialized);
+        localStorage.setItem(userStorageKey, cleanedSerialized);
       } else {
-        localStorage.setItem(this.STORAGE_KEY, serialized);
+        localStorage.setItem(userStorageKey, serialized);
       }
 
+      console.log(
+        `✅ Progress saved for user: ${this.userId.slice(0, 20)}..., ${Object.keys(data.courses).length} courses`
+      );
       return true;
     } catch (error) {
-      console.error('Error saving progress data:', error);
+      console.error(
+        `❌ Error saving progress data for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
       this.handleStorageError('save');
       return false;
     }
   }
 
   /**
-   * Validate progress data structure
+   * FIXED: Validate progress data with user verification
    */
-  private validateProgressData(data: ProgressSyncData): boolean {
+  private validateProgressData(data: UserProgressData): boolean {
     try {
       if (!data || typeof data !== 'object') return false;
+      if (data.userId !== this.userId) {
+        console.error(
+          `❌ User ID mismatch in validation! Expected: ${this.userId.slice(0, 20)}..., Got: ${data.userId?.slice(0, 20) || 'unknown'}...`
+        );
+        return false;
+      }
       if (!data.courses || typeof data.courses !== 'object') return false;
-      if (typeof data.userId !== 'string') return false;
       if (typeof data.lastSyncAt !== 'number') return false;
 
       // Validate each course
       for (const [courseId, courseProgress] of Object.entries(data.courses)) {
         if (!this.validateCourseProgress(courseProgress)) {
-          console.warn(`Invalid course progress for course ${courseId}`);
+          console.warn(
+            `⚠️  Invalid course progress for user ${this.userId.slice(0, 20)}... course ${courseId}`
+          );
           delete data.courses[parseInt(courseId)];
         }
       }
 
       return true;
     } catch (error) {
-      console.error('Error validating progress data:', error);
+      console.error(
+        `❌ Error validating progress data for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
       return false;
     }
   }
 
   /**
-   * Validate individual course progress
-   */
-  private validateCourseProgress(courseProgress: any): boolean {
-    try {
-      if (!courseProgress || typeof courseProgress !== 'object') return false;
-      if (typeof courseProgress.courseId !== 'number') return false;
-      if (typeof courseProgress.courseName !== 'string') return false;
-      if (typeof courseProgress.currentModuleIndex !== 'number') return false;
-      if (typeof courseProgress.overallProgress !== 'number') return false;
-      if (!Array.isArray(courseProgress.bookmarks)) return false;
-      if (!courseProgress.moduleProgresses || typeof courseProgress.moduleProgresses !== 'object')
-        return false;
-      if (!courseProgress.notes || typeof courseProgress.notes !== 'object') return false;
-
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
-   * Handle storage errors gracefully
+   * Handle storage errors with user-specific error tracking
    */
   private handleStorageError(operation: 'get' | 'save'): void {
     try {
-      const errorKey = `eduverse_storage_error_${operation}`;
+      const errorKey = `eduverse_storage_error_${operation}_${this.userId}`;
       const errorCount = parseInt(localStorage.getItem(errorKey) || '0') + 1;
 
       if (errorCount > 5) {
-        console.warn(`Storage ${operation} errors exceeded limit, clearing storage`);
+        console.warn(
+          `⚠️  Storage ${operation} errors exceeded limit for user ${this.userId.slice(0, 20)}..., clearing user storage`
+        );
         this.clearAllProgress();
         localStorage.removeItem(errorKey);
       } else {
         localStorage.setItem(errorKey, errorCount.toString());
       }
     } catch (error) {
-      console.error('Error handling storage error:', error);
+      console.error(
+        `❌ Error handling storage error for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
     }
   }
 
   /**
-   * Get progress for specific course
+   * FIXED: User-specific sync queue
    */
-  getCourseProgress(courseId: number): CourseProgress | null {
-    const allData = this.getAllProgress();
-    return allData.courses[courseId] || null;
-  }
-
-  /**
-   * Save progress for specific course
-   */
-  saveCourseProgress(courseProgress: CourseProgress): boolean {
+  private addToSyncQueue(action: {
+    type: string;
+    courseId: number;
+    moduleId?: number;
+    certificateId?: number;
+    timestamp: number;
+  }): void {
     try {
-      if (!this.validateCourseProgress(courseProgress)) {
-        console.error('Invalid course progress data');
-        return false;
+      const queue = this.getSyncQueue();
+      const actionWithUser = { ...action, userId: this.userId };
+      queue.push(actionWithUser);
+
+      // Limit queue size
+      if (queue.length > 50) {
+        queue.splice(0, queue.length - 50);
       }
 
-      const allData = this.getAllProgress();
-      courseProgress.lastAccessedAt = Date.now();
-      allData.courses[courseProgress.courseId] = courseProgress;
-      allData.lastSyncAt = Date.now();
-
-      return this.saveAllProgress(allData);
+      localStorage.setItem(this.getUserSyncKey(), JSON.stringify(queue));
+      console.log(`📋 Added to sync queue for user ${this.userId.slice(0, 20)}...: ${action.type}`);
     } catch (error) {
-      console.error('Error saving course progress:', error);
-      return false;
+      console.error(
+        `❌ Error adding to sync queue for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
     }
   }
 
-  // ===== MODULE PROGRESS METHODS =====
+  /**
+   * FIXED: Get user-specific sync queue
+   */
+  getSyncQueue(): Array<any> {
+    try {
+      const stored = localStorage.getItem(this.getUserSyncKey());
+      const queue = stored ? JSON.parse(stored) : [];
+
+      // Filter out actions that don't belong to this user (safety check)
+      return queue.filter((action: any) => !action.userId || action.userId === this.userId);
+    } catch (error) {
+      console.error(`❌ Error getting sync queue for user ${this.userId.slice(0, 20)}...:`, error);
+      return [];
+    }
+  }
 
   /**
-   * Update reading progress for a module
+   * FIXED: Clear user-specific sync queue
+   */
+  clearSyncQueue(): void {
+    try {
+      localStorage.removeItem(this.getUserSyncKey());
+      console.log(`🗑️  Cleared sync queue for user: ${this.userId.slice(0, 20)}...`);
+    } catch (error) {
+      console.error(`❌ Error clearing sync queue for user ${this.userId.slice(0, 20)}...:`, error);
+    }
+  }
+
+  /**
+   * FIXED: Update reading progress with user verification
    */
   updateReadingProgress(
     courseId: number,
@@ -396,59 +408,22 @@ export class ProgressStorageService {
 
       if (success) {
         console.log(
-          `Reading progress updated: Course ${courseId}, Module ${moduleId}, Progress: ${newProgress}%`
+          `📖 Reading progress updated for user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module ${moduleId}, Progress: ${newProgress}%`
         );
       }
 
       return success;
     } catch (error) {
-      console.error('Error updating reading progress:', error);
+      console.error(
+        `❌ Error updating reading progress for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
       return false;
     }
   }
 
   /**
-   * Add time spent on a module
-   */
-  addTimeSpent(courseId: number, moduleId: number, seconds: number, courseName?: string): boolean {
-    try {
-      if (seconds <= 0) return true; // No need to save zero time
-
-      const courseProgress =
-        this.getCourseProgress(courseId) || this.createEmptyCourseProgress(courseId, courseName);
-
-      if (!courseProgress.moduleProgresses[moduleId]) {
-        courseProgress.moduleProgresses[moduleId] = {
-          courseId,
-          moduleId,
-          readingProgress: 0,
-          timeSpent: 0,
-          isCompleted: false,
-          lastAccessedAt: Date.now(),
-        };
-      }
-
-      courseProgress.moduleProgresses[moduleId].timeSpent += seconds;
-      courseProgress.moduleProgresses[moduleId].lastAccessedAt = Date.now();
-      courseProgress.lastAccessedAt = Date.now();
-
-      const success = this.saveCourseProgress(courseProgress);
-
-      if (success) {
-        console.log(
-          `Time spent updated: Course ${courseId}, Module ${moduleId}, Added: ${seconds}s`
-        );
-      }
-
-      return success;
-    } catch (error) {
-      console.error('Error adding time spent:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Mark module as completed
+   * FIXED: Complete module with user verification
    */
   completeModule(courseId: number, moduleId: number, courseName?: string): boolean {
     try {
@@ -476,7 +451,7 @@ export class ProgressStorageService {
         // Update overall progress
         this.recalculateOverallProgress(courseProgress);
 
-        // Add to sync queue for backend
+        // Add to sync queue with user info
         this.addToSyncQueue({
           type: 'module_completed',
           courseId,
@@ -484,20 +459,276 @@ export class ProgressStorageService {
           timestamp: Date.now(),
         });
 
-        console.log(`Module completed: Course ${courseId}, Module ${moduleId}`);
+        console.log(
+          `✅ Module completed by user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module ${moduleId}`
+        );
       }
 
       courseProgress.lastAccessedAt = Date.now();
       return this.saveCourseProgress(courseProgress);
     } catch (error) {
-      console.error('Error completing module:', error);
+      console.error(`❌ Error completing module for user ${this.userId.slice(0, 20)}...:`, error);
       return false;
     }
   }
 
   /**
-   * Set current module index
+   * FIXED: Clear all progress for THIS USER only
    */
+  clearAllProgress(): boolean {
+    try {
+      const userStorageKey = this.getUserStorageKey();
+      const userSyncKey = this.getUserSyncKey();
+
+      localStorage.removeItem(userStorageKey);
+      localStorage.removeItem(userSyncKey);
+
+      // Clear user-specific error counters
+      const errorKeys = [
+        `eduverse_storage_error_get_${this.userId}`,
+        `eduverse_storage_error_save_${this.userId}`,
+      ];
+      errorKeys.forEach((key) => localStorage.removeItem(key));
+
+      console.log(`🗑️  All progress data cleared for user: ${this.userId.slice(0, 20)}...`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error clearing progress for user ${this.userId.slice(0, 20)}...:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * FIXED: Export progress for THIS USER
+   */
+  exportProgress(): string {
+    const allData = this.getAllProgress();
+    return JSON.stringify(
+      {
+        ...allData,
+        exportedAt: Date.now(),
+        exportedBy: this.userId,
+      },
+      null,
+      2
+    );
+  }
+
+  /**
+   * FIXED: Import progress with user verification
+   */
+  importProgress(jsonData: string): boolean {
+    try {
+      const data = JSON.parse(jsonData);
+
+      // Verify that imported data belongs to current user
+      if (data.userId && data.userId !== this.userId) {
+        throw new Error(
+          `Cannot import data from different user. Expected: ${this.userId.slice(0, 20)}..., Found: ${data.userId.slice(0, 20)}...`
+        );
+      }
+
+      // Ensure user ID is set
+      data.userId = this.userId;
+
+      // Validate data structure
+      if (!this.validateProgressData(data)) {
+        throw new Error('Invalid progress data format');
+      }
+
+      console.log(`📥 Importing progress data for user: ${this.userId.slice(0, 20)}...`);
+      return this.saveAllProgress(data);
+    } catch (error) {
+      console.error(`❌ Error importing progress for user ${this.userId.slice(0, 20)}...:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * FIXED: Debug method with user context
+   */
+  debugLogState(courseId?: number): void {
+    console.log(`🐛 DEBUG STATE for user: ${this.userId.slice(0, 20)}...${this.userId.slice(-8)}`);
+
+    if (courseId) {
+      const courseProgress = this.getCourseProgress(courseId);
+      console.log(`Course ${courseId} progress:`, courseProgress);
+      console.log(`Course ${courseId} statistics:`, this.getCourseStatistics(courseId));
+    } else {
+      const allData = this.getAllProgress();
+      console.log('All progress data:', allData);
+      console.log('Learning statistics:', this.getLearningStatistics());
+      console.log('Storage info:', this.getStorageInfo());
+    }
+
+    console.log('Storage keys used:', {
+      progress: this.getUserStorageKey(),
+      sync: this.getUserSyncKey(),
+    });
+  }
+
+  // ... (other methods remain the same but should include user verification where appropriate)
+
+  private validateCourseProgress(courseProgress: any): boolean {
+    try {
+      if (!courseProgress || typeof courseProgress !== 'object') return false;
+      if (typeof courseProgress.courseId !== 'number') return false;
+      if (typeof courseProgress.courseName !== 'string') return false;
+      if (typeof courseProgress.currentModuleIndex !== 'number') return false;
+      if (typeof courseProgress.overallProgress !== 'number') return false;
+      if (!Array.isArray(courseProgress.bookmarks)) return false;
+      if (!courseProgress.moduleProgresses || typeof courseProgress.moduleProgresses !== 'object')
+        return false;
+      if (!courseProgress.notes || typeof courseProgress.notes !== 'object') return false;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  getCourseProgress(courseId: number): CourseProgress | null {
+    const allData = this.getAllProgress();
+    return allData.courses[courseId] || null;
+  }
+
+  saveCourseProgress(courseProgress: CourseProgress): boolean {
+    try {
+      if (!this.validateCourseProgress(courseProgress)) {
+        console.error(`❌ Invalid course progress data for user ${this.userId.slice(0, 20)}...`);
+        return false;
+      }
+
+      const allData = this.getAllProgress();
+      courseProgress.lastAccessedAt = Date.now();
+      allData.courses[courseProgress.courseId] = courseProgress;
+      allData.lastSyncAt = Date.now();
+
+      return this.saveAllProgress(allData);
+    } catch (error) {
+      console.error(
+        `❌ Error saving course progress for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
+      return false;
+    }
+  }
+
+  private createEmptyCourseProgress(courseId: number, courseName?: string): CourseProgress {
+    const courseProgress: CourseProgress = {
+      courseId,
+      courseName: courseName || `Course ${courseId}`,
+      currentModuleIndex: 0,
+      totalModules: 0,
+      overallProgress: 0,
+      moduleProgresses: {},
+      bookmarks: [],
+      notes: {},
+      lastAccessedAt: Date.now(),
+      isCompleted: false,
+    };
+
+    console.log(
+      `📝 Created empty course progress for user ${this.userId.slice(0, 20)}..., Course ${courseId}`
+    );
+    return courseProgress;
+  }
+
+  private recalculateOverallProgress(courseProgress: CourseProgress): void {
+    const modules = Object.values(courseProgress.moduleProgresses);
+    if (modules.length === 0) {
+      courseProgress.overallProgress = 0;
+      return;
+    }
+
+    const completedModules = modules.filter((m) => m.isCompleted).length;
+    const readingProgress =
+      modules.reduce((sum, module) => sum + module.readingProgress, 0) / modules.length;
+
+    // Calculate progress based on both completion and reading progress
+    const completionProgress = (completedModules / modules.length) * 100;
+    const averageReadingProgress = readingProgress;
+
+    // Weighted average: 70% completion, 30% reading progress
+    courseProgress.overallProgress = Math.round(
+      completionProgress * 0.7 + averageReadingProgress * 0.3
+    );
+
+    // Update total modules if needed
+    if (courseProgress.totalModules < modules.length) {
+      courseProgress.totalModules = modules.length;
+    }
+
+    console.log(
+      `📊 Progress recalculated for user ${this.userId.slice(0, 20)}...: Course ${courseProgress.courseId}, Overall: ${courseProgress.overallProgress}%`
+    );
+  }
+
+  private cleanupOldData(data: UserProgressData): void {
+    console.log(`🧹 Cleaning up old data for user: ${this.userId.slice(0, 20)}...`);
+
+    const courses = Object.values(data.courses);
+    const oneMonthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    let cleanedCount = 0;
+
+    // Remove courses not accessed in the last month and not completed
+    for (const course of courses) {
+      if (!course.isCompleted && course.lastAccessedAt < oneMonthAgo) {
+        delete data.courses[course.courseId];
+        cleanedCount++;
+      }
+    }
+
+    // Limit notes to 100 characters each
+    for (const course of Object.values(data.courses)) {
+      for (const [moduleId, note] of Object.entries(course.notes)) {
+        if (note.length > 100) {
+          course.notes[parseInt(moduleId)] = note.substring(0, 100) + '...';
+        }
+      }
+    }
+
+    console.log(
+      `✅ Cleanup completed for user ${this.userId.slice(0, 20)}...: removed ${cleanedCount} old courses`
+    );
+  }
+
+  addTimeSpent(courseId: number, moduleId: number, seconds: number, courseName?: string): boolean {
+    try {
+      if (seconds <= 0) return true; // No need to save zero time
+
+      const courseProgress =
+        this.getCourseProgress(courseId) || this.createEmptyCourseProgress(courseId, courseName);
+
+      if (!courseProgress.moduleProgresses[moduleId]) {
+        courseProgress.moduleProgresses[moduleId] = {
+          courseId,
+          moduleId,
+          readingProgress: 0,
+          timeSpent: 0,
+          isCompleted: false,
+          lastAccessedAt: Date.now(),
+        };
+      }
+
+      courseProgress.moduleProgresses[moduleId].timeSpent += seconds;
+      courseProgress.moduleProgresses[moduleId].lastAccessedAt = Date.now();
+      courseProgress.lastAccessedAt = Date.now();
+
+      const success = this.saveCourseProgress(courseProgress);
+
+      if (success) {
+        console.log(
+          `⏱️  Time spent updated for user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module ${moduleId}, Added: ${seconds}s`
+        );
+      }
+
+      return success;
+    } catch (error) {
+      console.error(`❌ Error adding time spent for user ${this.userId.slice(0, 20)}...:`, error);
+      return false;
+    }
+  }
+
   setCurrentModule(courseId: number, moduleIndex: number, courseName?: string): boolean {
     try {
       const courseProgress =
@@ -511,21 +742,21 @@ export class ProgressStorageService {
       const success = this.saveCourseProgress(courseProgress);
 
       if (success) {
-        console.log(`Current module updated: Course ${courseId}, Module Index: ${newIndex}`);
+        console.log(
+          `📍 Current module updated for user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module Index: ${newIndex}`
+        );
       }
 
       return success;
     } catch (error) {
-      console.error('Error setting current module:', error);
+      console.error(
+        `❌ Error setting current module for user ${this.userId.slice(0, 20)}...:`,
+        error
+      );
       return false;
     }
   }
 
-  // ===== BOOKMARK AND NOTES METHODS =====
-
-  /**
-   * Toggle bookmark for module
-   */
   toggleBookmark(courseId: number, moduleId: number, courseName?: string): boolean {
     try {
       const courseProgress =
@@ -534,23 +765,24 @@ export class ProgressStorageService {
 
       if (bookmarkIndex > -1) {
         courseProgress.bookmarks.splice(bookmarkIndex, 1);
-        console.log(`Bookmark removed: Course ${courseId}, Module ${moduleId}`);
+        console.log(
+          `🔖 Bookmark removed by user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module ${moduleId}`
+        );
       } else {
         courseProgress.bookmarks.push(moduleId);
-        console.log(`Bookmark added: Course ${courseId}, Module ${moduleId}`);
+        console.log(
+          `🔖 Bookmark added by user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module ${moduleId}`
+        );
       }
 
       courseProgress.lastAccessedAt = Date.now();
       return this.saveCourseProgress(courseProgress);
     } catch (error) {
-      console.error('Error toggling bookmark:', error);
+      console.error(`❌ Error toggling bookmark for user ${this.userId.slice(0, 20)}...:`, error);
       return false;
     }
   }
 
-  /**
-   * Save note for module
-   */
   saveNote(courseId: number, moduleId: number, note: string, courseName?: string): boolean {
     try {
       const courseProgress =
@@ -558,30 +790,31 @@ export class ProgressStorageService {
 
       if (note.trim()) {
         courseProgress.notes[moduleId] = note.trim();
-        console.log(`Note saved: Course ${courseId}, Module ${moduleId}`);
+        console.log(
+          `📝 Note saved by user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module ${moduleId}`
+        );
       } else {
         delete courseProgress.notes[moduleId];
-        console.log(`Note deleted: Course ${courseId}, Module ${moduleId}`);
+        console.log(
+          `🗑️  Note deleted by user ${this.userId.slice(0, 20)}...: Course ${courseId}, Module ${moduleId}`
+        );
       }
 
       courseProgress.lastAccessedAt = Date.now();
       return this.saveCourseProgress(courseProgress);
     } catch (error) {
-      console.error('Error saving note:', error);
+      console.error(`❌ Error saving note for user ${this.userId.slice(0, 20)}...:`, error);
       return false;
     }
   }
 
-  // ===== COURSE COMPLETION METHODS =====
-
-  /**
-   * Mark course as completed
-   */
   completeCourse(courseId: number, certificateId?: number): boolean {
     try {
       const courseProgress = this.getCourseProgress(courseId);
       if (!courseProgress) {
-        console.error(`Cannot complete course ${courseId}: no progress found`);
+        console.error(
+          `❌ Cannot complete course ${courseId} for user ${this.userId.slice(0, 20)}...: no progress found`
+        );
         return false;
       }
 
@@ -602,21 +835,16 @@ export class ProgressStorageService {
       });
 
       console.log(
-        `Course completed: Course ${courseId}${certificateId ? `, Certificate ${certificateId}` : ''}`
+        `🎓 Course completed by user ${this.userId.slice(0, 20)}...: Course ${courseId}${certificateId ? `, Certificate ${certificateId}` : ''}`
       );
 
       return this.saveCourseProgress(courseProgress);
     } catch (error) {
-      console.error('Error completing course:', error);
+      console.error(`❌ Error completing course for user ${this.userId.slice(0, 20)}...:`, error);
       return false;
     }
   }
 
-  // ===== STATISTICS AND ANALYTICS =====
-
-  /**
-   * Get learning statistics
-   */
   getLearningStatistics(): {
     totalCourses: number;
     completedCourses: number;
@@ -664,6 +892,13 @@ export class ProgressStorageService {
       .sort((a, b) => b.lastAccessed - a.lastAccessed)
       .slice(0, 5);
 
+    console.log(`📊 Learning statistics for user ${this.userId.slice(0, 20)}...:`, {
+      totalCourses: courses.length,
+      completedCourses: courses.filter((c) => c.isCompleted).length,
+      totalTimeSpent: Math.floor(totalTimeSpent / 60),
+      averageProgress: Math.round(averageProgress),
+    });
+
     return {
       totalCourses: courses.length,
       completedCourses: courses.filter((c) => c.isCompleted).length,
@@ -675,9 +910,6 @@ export class ProgressStorageService {
     };
   }
 
-  /**
-   * Get course statistics
-   */
   getCourseStatistics(courseId: number): {
     totalModules: number;
     completedModules: number;
@@ -711,199 +943,12 @@ export class ProgressStorageService {
     };
   }
 
-  // ===== SYNC AND BACKUP METHODS =====
-
-  /**
-   * Add action to sync queue for backend synchronization
-   */
-  private addToSyncQueue(action: {
-    type: string;
-    courseId: number;
-    moduleId?: number;
-    certificateId?: number;
-    timestamp: number;
-  }): void {
-    try {
-      const queue = this.getSyncQueue();
-      queue.push(action);
-
-      // Limit queue size
-      if (queue.length > 50) {
-        queue.splice(0, queue.length - 50); // Keep only last 50 actions
-      }
-
-      localStorage.setItem(this.SYNC_KEY, JSON.stringify(queue));
-    } catch (error) {
-      console.error('Error adding to sync queue:', error);
-    }
-  }
-
-  /**
-   * Get sync queue
-   */
-  getSyncQueue(): Array<any> {
-    try {
-      const stored = localStorage.getItem(this.SYNC_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch (error) {
-      console.error('Error getting sync queue:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Clear sync queue after successful sync
-   */
-  clearSyncQueue(): void {
-    try {
-      localStorage.removeItem(this.SYNC_KEY);
-    } catch (error) {
-      console.error('Error clearing sync queue:', error);
-    }
-  }
-
-  /**
-   * Export progress data for backup
-   */
-  exportProgress(): string {
-    const allData = this.getAllProgress();
-    return JSON.stringify(allData, null, 2);
-  }
-
-  /**
-   * Import progress data from backup
-   */
-  importProgress(jsonData: string): boolean {
-    try {
-      const data = JSON.parse(jsonData) as ProgressSyncData;
-
-      // Validate data structure
-      if (!this.validateProgressData(data)) {
-        throw new Error('Invalid progress data format');
-      }
-
-      console.log('Importing progress data...');
-      return this.saveAllProgress(data);
-    } catch (error) {
-      console.error('Error importing progress:', error);
-      return false;
-    }
-  }
-
-  // ===== UTILITY METHODS =====
-
-  /**
-   * Create empty course progress
-   */
-  private createEmptyCourseProgress(courseId: number, courseName?: string): CourseProgress {
-    const courseProgress: CourseProgress = {
-      courseId,
-      courseName: courseName || `Course ${courseId}`,
-      currentModuleIndex: 0,
-      totalModules: 0,
-      overallProgress: 0,
-      moduleProgresses: {},
-      bookmarks: [],
-      notes: {},
-      lastAccessedAt: Date.now(),
-      isCompleted: false,
-    };
-
-    console.log(`Created empty course progress for Course ${courseId}`);
-    return courseProgress;
-  }
-
-  /**
-   * Recalculate overall progress for course
-   */
-  private recalculateOverallProgress(courseProgress: CourseProgress): void {
-    const modules = Object.values(courseProgress.moduleProgresses);
-    if (modules.length === 0) {
-      courseProgress.overallProgress = 0;
-      return;
-    }
-
-    const completedModules = modules.filter((m) => m.isCompleted).length;
-    const readingProgress =
-      modules.reduce((sum, module) => sum + module.readingProgress, 0) / modules.length;
-
-    // Calculate progress based on both completion and reading progress
-    const completionProgress = (completedModules / modules.length) * 100;
-    const averageReadingProgress = readingProgress;
-
-    // Weighted average: 70% completion, 30% reading progress
-    courseProgress.overallProgress = Math.round(
-      completionProgress * 0.7 + averageReadingProgress * 0.3
-    );
-
-    // Update total modules if needed
-    if (courseProgress.totalModules < modules.length) {
-      courseProgress.totalModules = modules.length;
-    }
-
-    console.log(
-      `Progress recalculated: Course ${courseProgress.courseId}, Overall: ${courseProgress.overallProgress}%`
-    );
-  }
-
-  /**
-   * Clean up old data to free storage space
-   */
-  private cleanupOldData(data: ProgressSyncData): void {
-    console.log('Cleaning up old data...');
-
-    const courses = Object.values(data.courses);
-    const oneMonthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    let cleanedCount = 0;
-
-    // Remove courses not accessed in the last month and not completed
-    for (const course of courses) {
-      if (!course.isCompleted && course.lastAccessedAt < oneMonthAgo) {
-        delete data.courses[course.courseId];
-        cleanedCount++;
-      }
-    }
-
-    // Limit notes to 100 characters each
-    for (const course of Object.values(data.courses)) {
-      for (const [moduleId, note] of Object.entries(course.notes)) {
-        if (note.length > 100) {
-          course.notes[parseInt(moduleId)] = note.substring(0, 100) + '...';
-        }
-      }
-    }
-
-    console.log(`Cleanup completed: removed ${cleanedCount} old courses`);
-  }
-
-  /**
-   * Clear all progress data
-   */
-  clearAllProgress(): boolean {
-    try {
-      localStorage.removeItem(this.STORAGE_KEY);
-      localStorage.removeItem(this.SYNC_KEY);
-
-      // Clear error counters
-      const errorKeys = ['eduverse_storage_error_get', 'eduverse_storage_error_save'];
-      errorKeys.forEach((key) => localStorage.removeItem(key));
-
-      console.log('All progress data cleared');
-      return true;
-    } catch (error) {
-      console.error('Error clearing progress:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Get storage usage info
-   */
   getStorageInfo(): {
     used: number;
     total: number;
     percentage: number;
     canStore: boolean;
+    userId: string;
   } {
     try {
       const data = this.getAllProgress();
@@ -915,6 +960,7 @@ export class ProgressStorageService {
         total,
         percentage: (used / total) * 100,
         canStore: used < total * 0.9, // 90% threshold
+        userId: this.userId,
       };
     } catch (error) {
       return {
@@ -922,34 +968,25 @@ export class ProgressStorageService {
         total: this.MAX_STORAGE_SIZE,
         percentage: 0,
         canStore: true,
+        userId: this.userId,
       };
-    }
-  }
-
-  /**
-   * Debug method to log current state
-   */
-  debugLogState(courseId?: number): void {
-    if (courseId) {
-      const courseProgress = this.getCourseProgress(courseId);
-      console.log(`Course ${courseId} progress:`, courseProgress);
-      console.log(`Course ${courseId} statistics:`, this.getCourseStatistics(courseId));
-    } else {
-      const allData = this.getAllProgress();
-      console.log('All progress data:', allData);
-      console.log('Learning statistics:', this.getLearningStatistics());
-      console.log('Storage info:', this.getStorageInfo());
     }
   }
 }
 
-// ===== HOOKS FOR REACT COMPONENTS =====
-
-export const useProgressStorage = (userId?: string) => {
+// FIXED: Updated hooks to ensure user-specific storage
+export const useProgressStorage = (userId: string) => {
+  if (!userId) {
+    throw new Error('userId is required for useProgressStorage');
+  }
   return new ProgressStorageService(userId);
 };
 
-export const useCourseProgress = (courseId: number, userId?: string) => {
+export const useCourseProgress = (courseId: number, userId: string) => {
+  if (!userId) {
+    throw new Error('userId is required for useCourseProgress');
+  }
+
   const storage = useProgressStorage(userId);
 
   const getCourseProgress = () => storage.getCourseProgress(courseId);
@@ -982,34 +1019,39 @@ export const useCourseProgress = (courseId: number, userId?: string) => {
   };
 };
 
-// ===== BACKGROUND SYNC SERVICE =====
-
+// FIXED: Background sync service with user-specific handling
 export class BackgroundSyncService {
-  private static instance: BackgroundSyncService;
+  private static instances: Map<string, BackgroundSyncService> = new Map();
   private storage: ProgressStorageService;
   private syncInterval: number | null = null;
 
   constructor(
     private actor: any,
-    userId?: string
+    private userId: string
   ) {
+    if (!userId) {
+      throw new Error('userId is required for BackgroundSyncService');
+    }
     this.storage = new ProgressStorageService(userId);
   }
 
-  static getInstance(actor: any, userId?: string): BackgroundSyncService {
-    if (!BackgroundSyncService.instance) {
-      BackgroundSyncService.instance = new BackgroundSyncService(actor, userId);
+  static getInstance(actor: any, userId: string): BackgroundSyncService {
+    if (!userId) {
+      throw new Error('userId is required for BackgroundSyncService.getInstance');
     }
-    return BackgroundSyncService.instance;
+
+    if (!BackgroundSyncService.instances.has(userId)) {
+      BackgroundSyncService.instances.set(userId, new BackgroundSyncService(actor, userId));
+    }
+    return BackgroundSyncService.instances.get(userId)!;
   }
 
-  /**
-   * Start background sync
-   */
   startSync(intervalMinutes: number = 5): void {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
     }
+
+    console.log(`🔄 Starting background sync for user: ${this.userId.slice(0, 20)}...`);
 
     this.syncInterval = window.setInterval(
       () => {
@@ -1022,25 +1064,22 @@ export class BackgroundSyncService {
     this.syncWithBackend();
   }
 
-  /**
-   * Stop background sync
-   */
   stopSync(): void {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+      console.log(`⏹️  Stopped background sync for user: ${this.userId.slice(0, 20)}...`);
     }
   }
 
-  /**
-   * Manually sync with backend
-   */
   async syncWithBackend(): Promise<boolean> {
     try {
       const queue = this.storage.getSyncQueue();
       if (queue.length === 0) return true;
 
-      console.log(`Syncing ${queue.length} actions with backend...`);
+      console.log(
+        `🔄 Syncing ${queue.length} actions with backend for user: ${this.userId.slice(0, 20)}...`
+      );
 
       // Process sync queue
       for (const action of queue) {
@@ -1049,30 +1088,174 @@ export class BackgroundSyncService {
 
       // Clear queue after successful sync
       this.storage.clearSyncQueue();
-      console.log('Sync completed successfully');
+      console.log(`✅ Sync completed successfully for user: ${this.userId.slice(0, 20)}...`);
       return true;
     } catch (error) {
-      console.error('Sync failed:', error);
+      console.error(`❌ Sync failed for user ${this.userId.slice(0, 20)}...:`, error);
       return false;
     }
   }
 
-  /**
-   * Process individual sync action
-   */
   private async processAction(action: any): Promise<void> {
+    // Verify action belongs to current user
+    if (action.userId && action.userId !== this.userId) {
+      console.warn(
+        `⚠️  Skipping action from different user: ${action.userId?.slice(0, 20) || 'unknown'}...`
+      );
+      return;
+    }
+
     switch (action.type) {
       case 'module_completed':
-        // Could sync with backend that module was completed
-        // For now, just log
-        console.log('Module completed sync:', action);
+        console.log(`📝 Module completed sync for user ${this.userId.slice(0, 20)}...:`, action);
         break;
       case 'course_completed':
-        // Could sync with backend that course was completed
-        console.log('Course completed sync:', action);
+        console.log(`🎓 Course completed sync for user ${this.userId.slice(0, 20)}...:`, action);
         break;
       default:
-        console.log('Unknown sync action:', action);
+        console.log(`❓ Unknown sync action for user ${this.userId.slice(0, 20)}...:`, action);
     }
+  }
+
+  // Clean up instance when user logs out
+  static cleanupInstance(userId: string): void {
+    const instance = BackgroundSyncService.instances.get(userId);
+    if (instance) {
+      instance.stopSync();
+      BackgroundSyncService.instances.delete(userId);
+      console.log(`🧹 Cleaned up BackgroundSyncService for user: ${userId.slice(0, 20)}...`);
+    }
+  }
+}
+
+// FIXED: Utility functions for multi-user storage management
+export class StorageManager {
+  private static readonly GLOBAL_STORAGE_KEY = 'eduverse_all_users';
+  private static readonly MAX_USERS = 10; // Limit number of users stored locally
+
+  /**
+   * Get list of all user IDs that have local storage
+   */
+  static getAllUserIds(): string[] {
+    try {
+      const keys = Object.keys(localStorage);
+      const userIds: string[] = [];
+
+      keys.forEach((key) => {
+        const match = key.match(/^eduverse_learning_progress_(.+)$/);
+        if (match) {
+          userIds.push(match[1]);
+        }
+      });
+
+      console.log(
+        `📋 Found ${userIds.length} users with local storage:`,
+        userIds.map((id) => id.slice(0, 20) + '...')
+      );
+      return userIds;
+    } catch (error) {
+      console.error('❌ Error getting all user IDs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Clean up storage for inactive users
+   */
+  static cleanupInactiveUsers(currentUserId: string): void {
+    try {
+      const allUserIds = this.getAllUserIds();
+
+      if (allUserIds.length <= this.MAX_USERS) {
+        return; // No cleanup needed
+      }
+
+      console.log(`🧹 Cleaning up inactive users (keeping max ${this.MAX_USERS})...`);
+
+      // Get last access time for each user
+      const userActivity: Array<{ userId: string; lastAccess: number }> = [];
+
+      allUserIds.forEach((userId) => {
+        try {
+          const storage = new ProgressStorageService(userId);
+          const data = storage.getAllProgress();
+          userActivity.push({
+            userId,
+            lastAccess: data.lastSyncAt || 0,
+          });
+        } catch (error) {
+          console.warn(`⚠️  Error getting activity for user ${userId.slice(0, 20)}...:`, error);
+          userActivity.push({
+            userId,
+            lastAccess: 0,
+          });
+        }
+      });
+
+      // Sort by last access (most recent first)
+      userActivity.sort((a, b) => b.lastAccess - a.lastAccess);
+
+      // Keep current user + most active users
+      const usersToKeep = new Set([currentUserId]);
+      userActivity.slice(0, this.MAX_USERS - 1).forEach((user) => {
+        usersToKeep.add(user.userId);
+      });
+
+      // Remove inactive users
+      let removedCount = 0;
+      allUserIds.forEach((userId) => {
+        if (!usersToKeep.has(userId)) {
+          try {
+            const storage = new ProgressStorageService(userId);
+            storage.clearAllProgress();
+            removedCount++;
+            console.log(`🗑️  Removed storage for inactive user: ${userId.slice(0, 20)}...`);
+          } catch (error) {
+            console.warn(`⚠️  Error removing storage for user ${userId.slice(0, 20)}...:`, error);
+          }
+        }
+      });
+
+      console.log(`✅ Cleanup completed: removed ${removedCount} inactive users`);
+    } catch (error) {
+      console.error('❌ Error during storage cleanup:', error);
+    }
+  }
+
+  /**
+   * Get storage usage summary for all users
+   */
+  static getStorageUsageSummary(): {
+    totalUsers: number;
+    totalSize: number;
+    userSizes: Array<{ userId: string; size: number; lastAccess: number }>;
+  } {
+    const allUserIds = this.getAllUserIds();
+    const userSizes: Array<{ userId: string; size: number; lastAccess: number }> = [];
+    let totalSize = 0;
+
+    allUserIds.forEach((userId) => {
+      try {
+        const storage = new ProgressStorageService(userId);
+        const data = storage.getAllProgress();
+        const size = JSON.stringify(data).length;
+
+        userSizes.push({
+          userId,
+          size,
+          lastAccess: data.lastSyncAt || 0,
+        });
+
+        totalSize += size;
+      } catch (error) {
+        console.warn(`⚠️  Error getting size for user ${userId.slice(0, 20)}...:`, error);
+      }
+    });
+
+    return {
+      totalUsers: allUserIds.length,
+      totalSize,
+      userSizes: userSizes.sort((a, b) => b.size - a.size),
+    };
   }
 }

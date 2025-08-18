@@ -1,4 +1,4 @@
-// Enhanced LearningPage.tsx with integrated progress persistence
+// Enhanced LearningPage.tsx with proper Internet Identity integration
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -33,9 +33,13 @@ import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 import { motion, useScroll } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';
 
-// Import the enhanced hooks and storage
-import { useLearningProgress, useReadingProgress as useReadingProgressHook } from '../../../hooks/useLearningProgress';
-import { ProgressStorageService } from '../../../services/progressStorage';
+// Import the enhanced hooks and storage - NOW PROPERLY USING IDENTITY
+import {
+  useLearningProgress,
+  useReadingProgress as useReadingProgressHook,
+  useTimeTracking,
+  useProgressStatistics,
+} from '../../../hooks/useLearningProgress';
 
 // Types matching Motoko backend
 interface Module {
@@ -48,7 +52,7 @@ interface Module {
 interface CourseMaterial {
   courseId: number;
   modules: Module[];
-  title?: string; // Added for better progress tracking
+  title?: string;
 }
 
 interface CourseInfo {
@@ -137,13 +141,13 @@ const truncateTitle = (title: string, maxLength: number = 50) => {
   return title.substring(0, maxLength) + '...';
 };
 
-// Fixed Content Renderer with proper key handling
+// Enhanced Content Renderer with proper identity-based progress tracking
 const ContentRenderer: React.FC<{
   content: string;
   onProgressUpdate?: (progress: number) => void;
 }> = ({ content, onProgressUpdate }) => {
   const [visibleElements, setVisibleElements] = useState(new Set<number>());
-  const lines = content.split('\n');
+  const lines = content.split('\n').filter((line) => line.trim() !== '');
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -155,34 +159,37 @@ const ContentRenderer: React.FC<{
           }
         });
       },
-      { threshold: 0.7 }
+      {
+        threshold: 0.7,
+        rootMargin: '0px 0px -50px 0px',
+      }
     );
 
     // Observe all content elements
-    document.querySelectorAll('[data-index]').forEach((el) => observer.observe(el));
+    const elements = document.querySelectorAll('[data-index]');
+    elements.forEach((el) => observer.observe(el));
 
     return () => observer.disconnect();
   }, [content]);
 
   useEffect(() => {
     if (onProgressUpdate && lines.length > 0) {
-      const progress = (visibleElements.size / lines.length) * 100;
-      onProgressUpdate(Math.min(progress, 100));
+      const progress = Math.min(100, (visibleElements.size / lines.length) * 100);
+      onProgressUpdate(progress);
     }
   }, [visibleElements, lines.length, onProgressUpdate]);
 
   return (
     <div className="prose prose-slate max-w-none">
       {lines.map((line, index) => {
-        // Extract key and other props separately to fix the warning
         const key = `line-${index}`;
         const dataIndex = index;
 
         if (line.startsWith('**') && line.endsWith('**')) {
           return (
-            <h3 
+            <h3
               key={key}
-              data-index={dataIndex} 
+              data-index={dataIndex}
               className="mt-6 mb-3 text-lg font-bold text-gray-800"
             >
               {line.replace(/\*\*/g, '')}
@@ -192,32 +199,20 @@ const ContentRenderer: React.FC<{
           const match = line.match(/- \*\*(.*?)\*\*: (.*)/);
           if (match) {
             return (
-              <li 
-                key={key}
-                data-index={dataIndex} 
-                className="mb-2 ml-6 list-disc text-white"
-              >
+              <li key={key} data-index={dataIndex} className="mb-2 ml-6 list-disc text-white">
                 <strong className="text-blue-600">{match[1]}</strong>: {match[2]}
               </li>
             );
           }
         } else if (line.startsWith('- ')) {
           return (
-            <li 
-              key={key}
-              data-index={dataIndex} 
-              className="mb-1 ml-6 list-disc text-white"
-            >
+            <li key={key} data-index={dataIndex} className="mb-1 ml-6 list-disc text-white">
               {line.substring(2)}
             </li>
           );
         } else if (line.match(/^\d+\. /)) {
           return (
-            <li 
-              key={key}
-              data-index={dataIndex} 
-              className="mb-1 ml-6 list-decimal text-white"
-            >
+            <li key={key} data-index={dataIndex} className="mb-1 ml-6 list-decimal text-white">
               {line.replace(/^\d+\. /, '')}
             </li>
           );
@@ -225,11 +220,7 @@ const ContentRenderer: React.FC<{
           return <br key={key} />;
         } else {
           return (
-            <p 
-              key={key}
-              data-index={dataIndex} 
-              className="mb-4 leading-relaxed text-white"
-            >
+            <p key={key} data-index={dataIndex} className="mb-4 leading-relaxed text-white">
               {line}
             </p>
           );
@@ -264,12 +255,13 @@ const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
   );
 };
 
-// Quiz Component (keeping existing implementation with minor fixes)
+// Quiz Component with Identity Integration
 const QuizComponent: React.FC<{
   quiz: CourseQuiz;
   onSubmit: (answers: number[]) => Promise<void>;
   isSubmitting: boolean;
-}> = ({ quiz, onSubmit, isSubmitting }) => {
+  currentUserId: string | null;
+}> = ({ quiz, onSubmit, isSubmitting, currentUserId }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<number[]>(new Array(quiz.questions.length).fill(-1));
   const [showResults, setShowResults] = useState<boolean[]>(
@@ -297,6 +289,11 @@ const QuizComponent: React.FC<{
     const newAnswers = [...answers];
     newAnswers[currentQuestionIndex] = answerIndex;
     setAnswers(newAnswers);
+
+    // Log answer selection for this specific user
+    console.log(
+      `User ${currentUserId} answered question ${currentQuestionIndex + 1}: option ${answerIndex + 1}`
+    );
   };
 
   const checkAnswer = () => {
@@ -315,6 +312,7 @@ const QuizComponent: React.FC<{
 
   const handleSubmit = async () => {
     setIsTimerActive(false);
+    console.log(`User ${currentUserId} submitted quiz for course ${quiz.courseId}`);
     await onSubmit(answers);
   };
 
@@ -353,6 +351,15 @@ const QuizComponent: React.FC<{
                   {currentQuestionIndex + 1} / {quiz.questions.length}
                 </div>
               </div>
+              {/* User ID Display (for debugging) */}
+              {currentUserId && (
+                <div className="text-right">
+                  <div className="text-xs text-gray-400">User</div>
+                  <div className="font-mono text-xs text-blue-500">
+                    {currentUserId.slice(-8)}...
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -461,12 +468,13 @@ const QuizComponent: React.FC<{
   );
 };
 
-// Certificate Display Component (keeping existing implementation)
+// Certificate Display Component
 const CertificateDisplay: React.FC<{
   certificate: Certificate;
   onViewCertificate: () => void;
   userName?: string;
-}> = ({ certificate, onViewCertificate, userName }) => {
+  currentUserId?: string | null;
+}> = ({ certificate, onViewCertificate, userName, currentUserId }) => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-yellow-50 to-orange-100 p-4">
       <div>
@@ -481,7 +489,7 @@ const CertificateDisplay: React.FC<{
 
             <div className="mb-4 text-xl text-gray-700">This certifies that</div>
             <div className="mb-4 border-b-2 border-blue-200 pb-2 text-3xl font-bold text-blue-600">
-              {userName || 'Student'}
+              {userName || (currentUserId ? `User ${currentUserId.slice(-8)}...` : 'Student')}
             </div>
             <div className="mb-6 text-lg text-gray-700">
               has successfully completed the course
@@ -511,6 +519,13 @@ const CertificateDisplay: React.FC<{
             <div className="mt-6 text-xs text-gray-400">
               Certificate ID: #{certificate.tokenId} • Hash:{' '}
               {certificate.certificateHash.slice(0, 16)}...
+              {/* User ID for verification */}
+              {currentUserId && (
+                <>
+                  <br />
+                  User ID: {currentUserId.slice(0, 8)}...{currentUserId.slice(-8)}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -578,46 +593,85 @@ export default function LearningPage() {
   const [finalQuizData, setFinalQuizData] = useState<CourseQuiz | null>(null);
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
 
-  // Actor state
+  // Actor and User Identity states - FIXED TO USE PROPER II
   const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isInitializingUser, setIsInitializingUser] = useState(true);
 
-  // Single storage instance
-  const storage = useMemo(() => new ProgressStorageService(), []);
-
-  // Enhanced Learning Progress Hook Integration
+  // Enhanced Learning Progress Hook Integration - NOW USING PROPER USER ID
   const [learningState, learningActions] = useLearningProgress(
     Number(courseId) || 0,
     courseMaterial,
-    actor
+    actor,
+    currentUserId || undefined
   );
 
-  // Reading progress hook for current module
-  const { progress: readingProgress, updateProgress: updateReadingProgress } = useReadingProgressHook(
+  // Reading progress hook for current module - IDENTITY INTEGRATED
+  const { progress: readingProgress, updateProgress: updateReadingProgress } =
+    useReadingProgressHook(
+      Number(courseId) || 0,
+      learningState.currentModule?.moduleId || 0,
+      (progress) => {
+        learningActions.updateReadingProgress(progress);
+      }
+    );
+
+  // Time tracking hook - IDENTITY INTEGRATED
+  const { timeSpent: sessionTimeSpent } = useTimeTracking(
     Number(courseId) || 0,
     learningState.currentModule?.moduleId || 0,
-    (progress) => {
-      learningActions.updateReadingProgress(progress);
-    }
+    currentView === 'learning'
   );
 
-  // Initialize actor
+  // Progress statistics hook - IDENTITY INTEGRATED
+  const { statistics: globalStatistics, refreshStatistics } = useProgressStatistics();
+
+  // Initialize Internet Identity and Actor - PROPER II INTEGRATION
   useEffect(() => {
-    const initActor = async () => {
+    const initializeUserAndActor = async () => {
       try {
-        const client = await getAuthClient();
-        const identity = client.getIdentity();
+        console.log('🔐 Initializing Internet Identity and Actor...');
+        setIsInitializingUser(true);
+
+        const authClient = await getAuthClient();
+        const identity = authClient.getIdentity();
+        const principal = identity.getPrincipal();
+
+        // Create actor with identity
         const newActor = await createActor(identity);
         setActor(newActor);
+
+        // Set user ID from principal
+        let userId: string;
+        if (principal.isAnonymous()) {
+          console.warn('⚠️  User is anonymous, creating temporary ID');
+          userId = 'anonymous-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        } else {
+          userId = principal.toString();
+          console.log('✅ User authenticated with II, Principal:', userId.slice(0, 20) + '...');
+        }
+
+        setCurrentUserId(userId);
+        console.log('🎯 User ID set:', userId.slice(0, 20) + '...');
       } catch (error) {
-        console.error('Failed to initialize actor:', error);
+        console.error('❌ Failed to initialize user and actor:', error);
         setError('Failed to initialize connection');
-        toast.error('Failed to initialize connection');
+        toast.error('Failed to initialize connection. Please refresh the page.');
+
+        // Create fallback user ID
+        const fallbackUserId =
+          'fallback-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        setCurrentUserId(fallbackUserId);
+        console.log('🔧 Using fallback user ID:', fallbackUserId);
+      } finally {
+        setIsInitializingUser(false);
       }
     };
 
-    initActor();
+    initializeUserAndActor();
   }, []);
 
+  // Scroll progress tracking
   useEffect(() => {
     const unsubscribe = scrollYProgress.on('change', (v) => {
       setScrolled(v !== 0);
@@ -625,11 +679,22 @@ export default function LearningPage() {
     return () => unsubscribe();
   }, [scrollYProgress]);
 
-  // Initialize and fetch data
+  // Fetch course data - USING PROPER USER IDENTITY
   useEffect(() => {
-    const fetchData = async () => {
-      if (!actor || !courseId) return;
+    const fetchCourseData = async () => {
+      if (!actor || !courseId || !currentUserId || isInitializingUser) {
+        console.log('⏳ Waiting for dependencies...', {
+          actor: !!actor,
+          courseId,
+          currentUserId,
+          isInitializingUser,
+        });
+        return;
+      }
 
+      console.log(
+        `📚 Fetching course data for User: ${currentUserId.slice(0, 20)}..., Course: ${courseId}`
+      );
       setLoading(true);
       setError(null);
 
@@ -637,6 +702,7 @@ export default function LearningPage() {
         const courseIdNum = BigInt(courseId);
 
         // Fetch course info
+        console.log('📖 Fetching course info...');
         const courseResult = await actor.getCourseById(courseIdNum);
         const convertedCourse = convertBigIntToString(courseResult);
 
@@ -647,37 +713,53 @@ export default function LearningPage() {
         }
 
         setCourseInfo(convertedCourse[0]);
+        console.log('✅ Course info loaded:', convertedCourse[0].title);
 
-        // Check enrollment status
+        // Check enrollment status for THIS SPECIFIC USER
+        console.log(`🎫 Checking enrollment for user: ${currentUserId.slice(0, 20)}...`);
         const enrollments = await actor.getMyEnrollments();
         const convertedEnrollments = convertBigIntToString(enrollments);
         const enrolled = convertedEnrollments.some((e: any) => e.courseId === Number(courseIdNum));
         setIsEnrolled(enrolled);
 
+        console.log(
+          `✅ Enrollment status for user ${currentUserId.slice(0, 20)}...: ${enrolled ? 'ENROLLED' : 'NOT ENROLLED'}`
+        );
+
         if (enrolled) {
-          // Fetch course materials
+          // Fetch course materials for enrolled user
+          console.log('📘 Fetching course materials...');
           const materialsResult = await actor.getCourseMaterials(courseIdNum);
 
           if ('ok' in materialsResult) {
             const convertedMaterials = convertBigIntToString(materialsResult.ok);
-            // Add course title to materials for better progress tracking
             const enhancedMaterials = {
               ...convertedMaterials,
-              title: convertedCourse[0].title
+              title: convertedCourse[0].title,
             };
             setCourseMaterial(enhancedMaterials);
+            console.log(
+              '✅ Course materials loaded:',
+              enhancedMaterials.modules?.length,
+              'modules'
+            );
 
-            // Restore progress from backend and local state
+            // Restore progress for THIS SPECIFIC USER
             await restoreUserProgress(courseIdNum);
 
-            // Try to load final quiz data from backend
+            // Load final quiz data
             await loadFinalQuizData(Number(courseIdNum), enhancedMaterials);
           } else {
             setError(materialsResult.err || 'Failed to load course materials');
+            console.error('❌ Failed to load materials:', materialsResult.err);
           }
         }
       } catch (err) {
-        console.error('Error fetching course data:', err);
+        console.error(
+          '❌ Error fetching course data for user:',
+          currentUserId.slice(0, 20) + '...',
+          err
+        );
         setError('Failed to load course data. Please try again.');
         toast.error('Failed to load course data');
       } finally {
@@ -685,26 +767,46 @@ export default function LearningPage() {
       }
     };
 
-    fetchData();
-  }, [actor, courseId]);
+    fetchCourseData();
+  }, [actor, courseId, currentUserId, isInitializingUser]);
 
-  // Restore user progress from both backend and local storage
+  // Restore user progress - USER-SPECIFIC PROGRESS RESTORATION
   const restoreUserProgress = async (courseIdNum: bigint) => {
+    if (!actor || !currentUserId) return;
+
     try {
-      // Fetch backend progress
-      const progressResult = await actor!.getMyProgress(courseIdNum);
+      console.log(
+        `📊 Restoring progress for User: ${currentUserId.slice(0, 20)}..., Course: ${Number(courseIdNum)}`
+      );
+
+      // Fetch backend progress for THIS USER
+      const progressResult = await actor.getMyProgress(courseIdNum);
       if (progressResult && progressResult.length > 0) {
         const convertedProgress = convertBigIntToString(progressResult[0]);
         setUserProgress(convertedProgress);
+        console.log(
+          '✅ Backend progress restored for user:',
+          currentUserId.slice(0, 20) + '...',
+          'Progress:',
+          convertedProgress.overallProgress + '%'
+        );
+      } else {
+        console.log('ℹ️  No backend progress found for user:', currentUserId.slice(0, 20) + '...');
       }
 
-      // Fetch quiz results
-      const quizResultsData = await actor!.getMyQuizResults(courseIdNum);
+      // Fetch quiz results for THIS USER
+      const quizResultsData = await actor.getMyQuizResults(courseIdNum);
       const convertedQuizResults = convertBigIntToString(quizResultsData);
       setQuizResults(convertedQuizResults || []);
+      console.log(
+        '✅ Quiz results loaded for user:',
+        currentUserId.slice(0, 20) + '...',
+        convertedQuizResults?.length || 0,
+        'results'
+      );
 
-      // Check for certificate
-      const certificates = await actor!.getMyCertificates();
+      // Check for certificate for THIS USER
+      const certificates = await actor.getMyCertificates();
       const convertedCertificates = convertBigIntToString(certificates);
       const courseCert = convertedCertificates.find(
         (cert: Certificate) => cert.courseId === Number(courseIdNum)
@@ -712,13 +814,21 @@ export default function LearningPage() {
 
       if (courseCert) {
         setUserCertificate(courseCert);
-        // If user has certificate, show it automatically
         setCurrentView('certificate');
+        console.log(
+          '🎓 Certificate found for user:',
+          currentUserId.slice(0, 20) + '...',
+          'Token:',
+          courseCert.tokenId
+        );
         return;
       }
-
     } catch (error) {
-      console.error('Error restoring progress:', error);
+      console.error(
+        '❌ Error restoring progress for user:',
+        currentUserId.slice(0, 20) + '...',
+        error
+      );
     }
   };
 
@@ -727,12 +837,14 @@ export default function LearningPage() {
     if (!actor) return;
 
     try {
+      console.log('🧠 Loading final quiz data for course:', courseIdNum);
       // Try to get quiz for the last module or a general final quiz
       const finalQuizResult = await actor.getQuiz(BigInt(courseIdNum), BigInt(999));
 
       if ('ok' in finalQuizResult) {
         const convertedQuiz = convertBigIntToString(finalQuizResult.ok);
         setFinalQuizData(convertedQuiz);
+        console.log('✅ Final quiz loaded from backend');
       } else {
         // Create fallback quiz from existing modules
         const fallbackQuiz: CourseQuiz = {
@@ -755,39 +867,45 @@ export default function LearningPage() {
           timeLimit: 900,
         };
         setFinalQuizData(fallbackQuiz);
+        console.log('✅ Fallback final quiz created');
       }
     } catch (error) {
-      console.log('Error loading final quiz from backend:', error);
+      console.log('⚠️  Error loading final quiz from backend:', error);
     }
   };
 
-  // Handle enrollment
+  // Handle enrollment - USER-SPECIFIC ENROLLMENT
   const handleEnroll = async () => {
-    if (!actor || !courseId) return;
+    if (!actor || !courseId || !currentUserId) return;
 
+    console.log(`🎫 Enrolling user ${currentUserId.slice(0, 20)}... in course ${courseId}`);
     setIsEnrolling(true);
+
     try {
       const result = await actor.enrollCourse(BigInt(courseId));
 
       if ('ok' in result) {
         toast.success(result.ok);
         setIsEnrolled(true);
+        console.log('✅ Enrollment successful for user:', currentUserId.slice(0, 20) + '...');
 
         // Reload the page to fetch enrolled content
         window.location.reload();
       } else {
         setError(result.err || 'Failed to enroll in course');
         toast.error(result.err || 'Failed to enroll in course');
+        console.error('❌ Enrollment failed:', result.err);
       }
     } catch (err) {
       setError('Failed to enroll in course. Please try again.');
       toast.error('Failed to enroll in course');
+      console.error('❌ Enrollment error for user:', currentUserId.slice(0, 20) + '...', err);
     } finally {
       setIsEnrolling(false);
     }
   };
 
-  // Helper functions using learning state
+  // Helper functions using learning state - IDENTITY-AWARE
   const isModuleLocked = (moduleIndex: number) => {
     if (moduleIndex === 0) return false;
     const prevModule = courseMaterial?.modules[moduleIndex - 1];
@@ -796,7 +914,7 @@ export default function LearningPage() {
 
   const canAccessQuiz = () => {
     if (!courseMaterial) return false;
-    return courseMaterial.modules.every((module) => 
+    return courseMaterial.modules.every((module) =>
       learningState.completedModules.includes(module.moduleId)
     );
   };
@@ -807,13 +925,15 @@ export default function LearningPage() {
       return;
     }
 
+    console.log(`📖 User ${currentUserId?.slice(0, 20)}... switched to module ${moduleIndex + 1}`);
     learningActions.goToModule(moduleIndex);
     setCurrentView('learning');
   };
 
   const handleStartQuiz = async () => {
-    if (!actor || !courseId || !courseMaterial) return;
+    if (!actor || !courseId || !courseMaterial || !currentUserId) return;
 
+    console.log(`🧠 User ${currentUserId.slice(0, 20)}... starting quiz for course ${courseId}`);
     setIsLoadingQuiz(true);
 
     try {
@@ -844,18 +964,21 @@ export default function LearningPage() {
 
       setCurrentQuiz(quizToUse);
       setCurrentView('quiz');
+      console.log('✅ Quiz started for user:', currentUserId.slice(0, 20) + '...');
     } catch (error) {
       toast.error('Failed to load quiz');
-      console.error('Quiz loading error:', error);
+      console.error('❌ Quiz loading error for user:', currentUserId.slice(0, 20) + '...', error);
     } finally {
       setIsLoadingQuiz(false);
     }
   };
 
   const handleQuizSubmit = async (answers: number[]) => {
-    if (!actor || !courseId || !currentQuiz) return;
+    if (!actor || !courseId || !currentQuiz || !currentUserId) return;
 
+    console.log(`📝 User ${currentUserId.slice(0, 20)}... submitting quiz for course ${courseId}`);
     setIsSubmittingQuiz(true);
+
     try {
       // Convert answers to the format expected by backend
       const formattedAnswers = answers.map((answer, index) => ({
@@ -876,6 +999,12 @@ export default function LearningPage() {
 
         if ('ok' in submitResult) {
           const result = convertBigIntToString(submitResult.ok);
+          console.log(
+            '✅ Quiz submitted to backend for user:',
+            currentUserId.slice(0, 20) + '...',
+            'Score:',
+            result.score + '%'
+          );
 
           if (result.passed) {
             toast.success(`Quiz passed with ${result.score}%! Generating certificate...`);
@@ -897,21 +1026,41 @@ export default function LearningPage() {
                   await learningActions.completeCourse(courseCert.tokenId);
 
                   toast.success('🎉 Congratulations! Your certificate has been generated!');
+                  console.log(
+                    '🎓 Certificate generated for user:',
+                    currentUserId.slice(0, 20) + '...',
+                    'Token:',
+                    courseCert.tokenId
+                  );
                 }
               } catch (error) {
-                console.error('Error checking certificate:', error);
+                console.error(
+                  '❌ Error checking certificate for user:',
+                  currentUserId.slice(0, 20) + '...',
+                  error
+                );
               }
             }, 1000);
           } else {
             toast.error(
               `Quiz failed with ${result.score}%. You need ${currentQuiz.passingScore}% to pass.`
             );
+            console.log(
+              '❌ Quiz failed for user:',
+              currentUserId.slice(0, 20) + '...',
+              'Score:',
+              result.score + '%'
+            );
           }
         } else {
           throw new Error(submitResult.err || 'Failed to submit quiz');
         }
       } catch (backendError) {
-        console.error('Backend submission failed, using fallback:', backendError);
+        console.error(
+          '❌ Backend submission failed for user:',
+          currentUserId.slice(0, 20) + '...',
+          backendError
+        );
 
         // Fallback calculation if backend fails
         const correctAnswers = currentQuiz.questions.reduce((acc, question, index) => {
@@ -922,7 +1071,7 @@ export default function LearningPage() {
         const passed = score >= currentQuiz.passingScore;
 
         const quizResult: QuizResult = {
-          userId: 'current-user',
+          userId: currentUserId,
           courseId: Number(courseId),
           moduleId: currentQuiz.moduleId,
           score,
@@ -932,6 +1081,12 @@ export default function LearningPage() {
         };
 
         setQuizResults([quizResult]);
+        console.log(
+          '🔧 Fallback quiz result for user:',
+          currentUserId.slice(0, 20) + '...',
+          'Score:',
+          score + '%'
+        );
 
         if (passed) {
           toast.success(`Quiz passed with ${score}%! Generating certificate...`);
@@ -939,7 +1094,7 @@ export default function LearningPage() {
           setTimeout(async () => {
             const certificate: Certificate = {
               tokenId: Date.now(),
-              userId: 'current-user',
+              userId: currentUserId,
               courseId: Number(courseId),
               courseName: courseInfo?.title || 'Course',
               completedAt: Date.now() * 1000000,
@@ -960,6 +1115,12 @@ export default function LearningPage() {
             await learningActions.completeCourse(certificate.tokenId);
 
             toast.success('🎉 Congratulations! Your certificate has been generated!');
+            console.log(
+              '🎓 Fallback certificate generated for user:',
+              currentUserId.slice(0, 20) + '...',
+              'Token:',
+              certificate.tokenId
+            );
           }, 1000);
         } else {
           toast.error(`Quiz failed with ${score}%. You need ${currentQuiz.passingScore}% to pass.`);
@@ -969,28 +1130,37 @@ export default function LearningPage() {
       setCurrentQuiz(null);
       setCurrentView('learning');
     } catch (error) {
-      console.error('Quiz submission error:', error);
+      console.error(
+        '❌ Quiz submission error for user:',
+        currentUserId.slice(0, 20) + '...',
+        error
+      );
       toast.error('Failed to submit quiz');
     } finally {
       setIsSubmittingQuiz(false);
     }
   };
 
-  // Loading state
-  if (loading || !actor || learningState.isLoading) {
-    return (
-      <LoadingSpinner
-        message={
-          !actor 
-            ? 'Initializing connection...' 
-            : learningState.isLoading 
-              ? 'Loading progress...'
-              : 'Loading course materials...'
-        }
-      />
-    );
+  // Loading state - ENHANCED WITH USER STATUS
+  if (loading || !actor || learningState.isLoading || !currentUserId || isInitializingUser) {
+    let loadingMessage = 'Loading...';
+
+    if (isInitializingUser) {
+      loadingMessage = 'Initializing Internet Identity...';
+    } else if (!actor) {
+      loadingMessage = 'Connecting to blockchain...';
+    } else if (!currentUserId) {
+      loadingMessage = 'Getting user identity...';
+    } else if (learningState.isLoading) {
+      loadingMessage = 'Loading your progress...';
+    } else {
+      loadingMessage = 'Loading course materials...';
+    }
+
+    return <LoadingSpinner message={loadingMessage} />;
   }
 
+  // Error state or not enrolled - USER-SPECIFIC MESSAGING
   if (error || !isEnrolled) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-transparent p-4">
@@ -1002,6 +1172,17 @@ export default function LearningPage() {
           <p className="text-accent mb-6">
             {error || 'You need to enroll in this course to access the materials'}
           </p>
+
+          {/* User Identity Display */}
+          {currentUserId && (
+            <div className="mb-4 rounded-lg bg-slate-100 p-3">
+              <div className="text-xs text-gray-500">Logged in as</div>
+              <div className="font-mono text-sm text-gray-700">
+                {currentUserId.slice(0, 20)}...{currentUserId.slice(-8)}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-center gap-3">
             {!error && !isEnrolled && (
               <button
@@ -1042,21 +1223,24 @@ export default function LearningPage() {
   }
 
   const currentModule = learningState.currentModule;
-  const allLearningCompleted = learningState.completedModules.length === courseMaterial.modules.length;
+  const allLearningCompleted =
+    learningState.completedModules.length === courseMaterial.modules.length;
 
+  // Certificate View - USER-SPECIFIC CERTIFICATE
   if (currentView === 'certificate' && userCertificate) {
     return (
       <CertificateDisplay
         certificate={userCertificate}
+        currentUserId={currentUserId}
         onViewCertificate={() => {
           window.open(`/certificate/${userCertificate.tokenId}`, '_blank');
         }}
-        userName="Student"
+        userName={`User ${currentUserId?.slice(-8)}`}
       />
     );
   }
 
-  // Show Quiz View
+  // Quiz View - USER-SPECIFIC QUIZ
   if (currentView === 'quiz' && currentQuiz) {
     return (
       <div className="relative min-h-screen">
@@ -1077,14 +1261,16 @@ export default function LearningPage() {
           quiz={currentQuiz}
           onSubmit={handleQuizSubmit}
           isSubmitting={isSubmittingQuiz}
+          currentUserId={currentUserId}
         />
       </div>
     );
   }
 
+  // Main Learning Interface - USER-SPECIFIC PROGRESS DISPLAY
   return (
     <div className="min-h-screen bg-transparent">
-      {/* Fixed Header */}
+      {/* Fixed Header - ENHANCED WITH USER INFO */}
       <header
         className={cn(
           'fixed top-0 left-0 z-50 flex w-full items-center justify-between px-6 py-2 transition-all duration-300 md:px-12',
@@ -1123,6 +1309,16 @@ export default function LearningPage() {
 
             {/* Right Section */}
             <div className="flex items-center space-x-6">
+              {/* User Identity Display */}
+              <div className="hidden items-center space-x-2 sm:flex">
+                <div className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1">
+                  <span className="text-xs font-medium text-green-400">
+                    <User className="mr-1 inline h-3 w-3" />
+                    {currentUserId?.slice(-8)}
+                  </span>
+                </div>
+              </div>
+
               {/* Module Info with Reading Progress */}
               <div className="hidden items-center space-x-3 sm:flex">
                 <div className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1">
@@ -1196,7 +1392,7 @@ export default function LearningPage() {
       {/* Main Content */}
       <div className="py-8 pt-20">
         <div className="grid gap-8 lg:grid-cols-4">
-          {/* Sidebar - Module List */}
+          {/* Sidebar - Module List - USER-SPECIFIC PROGRESS */}
           <div className="lg:col-span-1">
             <div className="sticky top-32">
               <motion.div
@@ -1209,11 +1405,34 @@ export default function LearningPage() {
                   <BookOpen className="h-5 w-5 text-blue-400" />
                   Course Modules
                 </h3>
+
+                {/* User Progress Summary */}
+                <div className="mb-4 rounded-lg bg-slate-800/40 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-slate-400">Your Progress</span>
+                    <span className="font-mono text-xs text-green-400">
+                      {currentUserId?.slice(-6)}
+                    </span>
+                  </div>
+                  <div className="text-sm text-white">
+                    {learningState.completedModules.length} of {courseMaterial.modules.length}{' '}
+                    modules
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${learningState.overallProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   {courseMaterial.modules.map((module, index) => {
                     const isUnlocked =
                       index === 0 ||
-                      learningState.completedModules.includes(courseMaterial.modules[index - 1]?.moduleId);
+                      learningState.completedModules.includes(
+                        courseMaterial.modules[index - 1]?.moduleId
+                      );
                     const isCompleted = learningState.completedModules.includes(module.moduleId);
                     const isCurrent = learningState.currentModuleIndex === index;
                     const hasPassedQuiz = quizResults.some(
@@ -1222,7 +1441,8 @@ export default function LearningPage() {
 
                     // Get local reading progress for this module
                     const moduleReadingProgress =
-                      learningState.courseProgress?.moduleProgresses[module.moduleId]?.readingProgress || 0;
+                      learningState.courseProgress?.moduleProgresses[module.moduleId]
+                        ?.readingProgress || 0;
 
                     return (
                       <button
@@ -1340,10 +1560,12 @@ export default function LearningPage() {
                   )}
                 </div>
 
-                {/* Learning Statistics */}
+                {/* Learning Statistics - USER-SPECIFIC */}
                 {learningState.statistics && (
                   <div className="mt-4 rounded-lg bg-slate-800/40 p-4">
-                    <h4 className="mb-3 text-sm font-semibold text-slate-300">Learning Stats</h4>
+                    <h4 className="mb-3 text-sm font-semibold text-slate-300">
+                      Your Learning Stats
+                    </h4>
                     <div className="space-y-2 text-xs">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Total Time:</span>
@@ -1361,7 +1583,15 @@ export default function LearningPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Completion:</span>
-                        <span className="text-white">{Math.round(learningState.statistics.completionRate)}%</span>
+                        <span className="text-white">
+                          {Math.round(learningState.statistics.completionRate)}%
+                        </span>
+                      </div>
+                      <div className="mt-2 flex justify-between border-t border-slate-600/50 pt-2">
+                        <span className="text-slate-400">User ID:</span>
+                        <span className="font-mono text-xs text-green-400">
+                          {currentUserId?.slice(-6)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1370,10 +1600,10 @@ export default function LearningPage() {
             </div>
           </div>
 
-          {/* Main Content */}
+          {/* Main Content - USER-SPECIFIC LEARNING EXPERIENCE */}
           <div className="lg:col-span-3">
             <div className="space-y-8">
-              {/* Module Header */}
+              {/* Module Header - ENHANCED WITH USER CONTEXT */}
               {currentModule && (
                 <motion.div
                   className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
@@ -1397,6 +1627,13 @@ export default function LearningPage() {
                           {Math.floor(learningState.timeSpent / 60)}m spent
                         </div>
                       )}
+                      {/* User Session Time */}
+                      {sessionTimeSpent > 0 && (
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4" />
+                          {Math.floor(sessionTimeSpent / 60)}m session
+                        </div>
+                      )}
                     </div>
                   </div>
                   <h2
@@ -1406,13 +1643,13 @@ export default function LearningPage() {
                     {currentModule.title}
                   </h2>
 
-                  {/* Module Status and Actions */}
+                  {/* Module Status and Actions - USER-SPECIFIC */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       {learningState.completedModules.includes(currentModule.moduleId) ? (
                         <div className="flex items-center gap-1 rounded-full bg-green-500 px-3 py-1 text-sm font-medium text-white shadow-lg">
                           <CheckCircle size={16} />
-                          Completed
+                          Completed by You
                         </div>
                       ) : (
                         <div className="bg-primary rounded-full px-3 py-1 text-sm font-medium text-white shadow-lg">
@@ -1428,11 +1665,13 @@ export default function LearningPage() {
                             style={{ width: `${learningState.readingProgress}%` }}
                           ></div>
                         </div>
-                        <span className="text-xs text-slate-400">{Math.round(learningState.readingProgress)}%</span>
+                        <span className="text-xs text-slate-400">
+                          {Math.round(learningState.readingProgress)}%
+                        </span>
                       </div>
                     </div>
 
-                    {/* Module Actions */}
+                    {/* Module Actions - USER-SPECIFIC */}
                     <div className="flex items-center gap-2">
                       {/* Bookmark Button */}
                       <button
@@ -1442,6 +1681,11 @@ export default function LearningPage() {
                             ? 'bg-yellow-500 text-white'
                             : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
                         }`}
+                        title={
+                          learningState.bookmarkedModules.includes(currentModule.moduleId)
+                            ? 'Remove bookmark'
+                            : 'Bookmark this module'
+                        }
                       >
                         <Star size={16} />
                       </button>
@@ -1449,7 +1693,8 @@ export default function LearningPage() {
                       {/* Notes Button */}
                       <button
                         onClick={() => {
-                          const currentNote = learningState.moduleNotes[currentModule.moduleId] || '';
+                          const currentNote =
+                            learningState.moduleNotes[currentModule.moduleId] || '';
                           const note = prompt('Add a note for this module:', currentNote);
                           if (note !== null) {
                             learningActions.saveNote(note, currentModule.moduleId);
@@ -1460,15 +1705,27 @@ export default function LearningPage() {
                             ? 'bg-blue-500 text-white'
                             : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
                         }`}
+                        title={
+                          learningState.moduleNotes[currentModule.moduleId]
+                            ? 'Edit your note'
+                            : 'Add a note'
+                        }
                       >
                         <FileText size={16} />
                       </button>
+
+                      {/* User Indicator */}
+                      <div className="rounded-lg bg-green-500/20 px-2 py-1">
+                        <span className="font-mono text-xs text-green-400">
+                          {currentUserId?.slice(-4)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
               )}
 
-              {/* Content */}
+              {/* Content - USER-SPECIFIC READING TRACKING */}
               {currentModule && (
                 <motion.div
                   className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
@@ -1480,6 +1737,9 @@ export default function LearningPage() {
                   <h3 className="mb-6 flex items-center gap-2 text-xl font-bold text-white">
                     <FileText className="h-5 w-5 text-blue-400" />
                     Learning Material
+                    <span className="ml-auto text-sm font-normal text-slate-400">
+                      User: {currentUserId?.slice(-6)}
+                    </span>
                   </h3>
 
                   <div className="rounded-lg border border-slate-600/50 bg-slate-900/50 p-6">
@@ -1488,12 +1748,15 @@ export default function LearningPage() {
                       onProgressUpdate={updateReadingProgress}
                     />
 
-                    {/* Show saved note if exists */}
+                    {/* Show saved note if exists - USER-SPECIFIC */}
                     {learningState.moduleNotes[currentModule.moduleId] && (
                       <div className="mt-6 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
                         <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-400">
                           <FileText size={14} />
-                          Your Note
+                          Your Personal Note
+                          <span className="ml-auto font-mono text-xs text-blue-300">
+                            {currentUserId?.slice(-4)}
+                          </span>
                         </h4>
                         <p className="text-sm text-blue-100">
                           {learningState.moduleNotes[currentModule.moduleId]}
@@ -1505,7 +1768,7 @@ export default function LearningPage() {
                       {!learningState.completedModules.includes(currentModule.moduleId) ? (
                         <button
                           onClick={() => learningActions.completeCurrentModule()}
-                          disabled={learningState.readingProgress < 80} // Require 80% reading progress
+                          disabled={learningState.readingProgress < 80}
                           className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 font-medium text-white transition-all duration-200 hover:scale-105 hover:from-green-600 hover:to-green-700 hover:shadow-lg disabled:cursor-not-allowed disabled:from-gray-500 disabled:to-gray-600 disabled:opacity-50"
                         >
                           <CheckCircle className="h-4 w-4" />
@@ -1516,7 +1779,10 @@ export default function LearningPage() {
                       ) : (
                         <div className="flex items-center gap-2 text-green-400">
                           <CheckCircle size={20} />
-                          <span className="font-medium">Module completed</span>
+                          <span className="font-medium">Module completed by you</span>
+                          <span className="ml-2 font-mono text-xs text-green-300">
+                            ({currentUserId?.slice(-6)})
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1541,7 +1807,7 @@ export default function LearningPage() {
                 </motion.div>
               )}
 
-              {/* Navigation */}
+              {/* Navigation - USER-SPECIFIC PROGRESS CONSTRAINTS */}
               <motion.div
                 className="flex items-center justify-between rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow-xl backdrop-blur-sm"
                 transition={MOTION_TRANSITION}
@@ -1564,8 +1830,11 @@ export default function LearningPage() {
                 </div>
 
                 <span className="text-center text-gray-400">
-                  <div>
+                  <div className="flex items-center gap-2">
                     Module {learningState.currentModuleIndex + 1} of {courseMaterial.modules.length}
+                    <span className="font-mono text-xs text-green-400">
+                      ({currentUserId?.slice(-4)})
+                    </span>
                   </div>
                   {learningState.currentModuleIndex < courseMaterial.modules.length - 1 &&
                     currentModule &&
@@ -1605,15 +1874,23 @@ export default function LearningPage() {
                   {learningState.currentModuleIndex === courseMaterial.modules.length - 1 &&
                     currentModule &&
                     learningState.completedModules.includes(currentModule.moduleId) && (
-                      <button className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-5 py-2.5 font-medium text-white transition-all duration-200 hover:scale-105 hover:from-green-600 hover:to-green-700 hover:shadow-lg">
+                      <button
+                        onClick={() => {
+                          toast.success(
+                            'All learning modules completed! Take the final quiz to earn your certificate.'
+                          );
+                          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                        }}
+                        className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-5 py-2.5 font-medium text-white transition-all duration-200 hover:scale-105 hover:from-green-600 hover:to-green-700 hover:shadow-lg"
+                      >
                         <Award className="h-4 w-4" />
-                        Complete Course
+                        Ready for Quiz
                       </button>
                     )}
                 </div>
               </motion.div>
 
-              {/* Final Quiz Section - Updated Design */}
+              {/* Final Quiz Section - USER-SPECIFIC ASSESSMENT */}
               {allLearningCompleted && !userCertificate && (
                 <motion.div
                   className="border-primary/30 from-primary/10 via-primary/5 relative mt-6 overflow-hidden rounded-2xl border bg-gradient-to-br to-transparent shadow-2xl backdrop-blur-sm"
@@ -1645,12 +1922,45 @@ export default function LearningPage() {
                       </h3>
 
                       <p className="mb-8 text-lg leading-relaxed text-gray-300">
-                        Excellent work! You've mastered all learning modules.
+                        Excellent work,{' '}
+                        <span className="font-mono text-green-400">{currentUserId?.slice(-6)}</span>
+                        ! You've mastered all learning modules.
                         <br />
                         <span className="font-semibold text-white">
                           Take the comprehensive final quiz to earn your NFT certificate.
                         </span>
                       </p>
+
+                      {/* User Achievement Summary */}
+                      <div className="mb-8 rounded-xl bg-slate-800/60 p-4">
+                        <h4 className="mb-3 font-bold text-white">Your Achievement Summary</h4>
+                        <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-400">
+                              {courseMaterial.modules.length}
+                            </div>
+                            <div className="text-gray-400">Modules Completed</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-green-400">
+                              {Math.floor((learningState.statistics?.totalTimeSpent || 0) / 60)}
+                            </div>
+                            <div className="text-gray-400">Minutes Studied</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-yellow-400">
+                              {learningState.bookmarkedModules.length}
+                            </div>
+                            <div className="text-gray-400">Bookmarks</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-purple-400">
+                              {Object.keys(learningState.moduleNotes).length}
+                            </div>
+                            <div className="text-gray-400">Notes</div>
+                          </div>
+                        </div>
+                      </div>
 
                       {/* Quiz Features Grid */}
                       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1753,13 +2063,15 @@ export default function LearningPage() {
                         </button>
                       </div>
 
-                      {/* Motivation Text */}
+                      {/* User ID & Motivation Text */}
                       <div className="mt-6 text-sm text-gray-400">
-                        <p>
+                        <p className="mb-2">
                           💡 <span className="font-medium text-gray-300">Pro tip:</span> Review your
                           learning materials before starting.
-                          <br />
-                          You've got this! Show off everything you've learned.
+                        </p>
+                        <p className="font-mono text-xs text-green-400">
+                          You've got this, {currentUserId?.slice(-8)}! Show off everything you've
+                          learned.
                         </p>
                       </div>
                     </div>
@@ -1767,7 +2079,7 @@ export default function LearningPage() {
                 </motion.div>
               )}
 
-              {/* Learning Progress Info */}
+              {/* Learning Progress Info - USER-SPECIFIC STATUS */}
               {!allLearningCompleted && (
                 <motion.div
                   className="border-primary/30 mt-6 rounded-2xl border-2 bg-slate-800/60 p-6 backdrop-blur-sm"
@@ -1787,12 +2099,27 @@ export default function LearningPage() {
                         earn your NFT certificate.
                       </p>
 
+                      {/* User-specific progress indication */}
+                      <div className="mb-4 rounded-lg bg-slate-700/50 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-sm text-gray-300">Your Progress</span>
+                          <span className="font-mono text-xs text-green-400">
+                            {currentUserId?.slice(-6)}
+                          </span>
+                        </div>
+                        <div className="text-white">
+                          {learningState.completedModules.length} of {courseMaterial.modules.length}{' '}
+                          modules completed
+                        </div>
+                      </div>
+
                       {/* Progress Bar */}
                       <div className="mb-4">
                         <div className="mb-2 flex justify-between text-sm text-gray-400">
                           <span>Learning Progress</span>
                           <span>
-                            {learningState.completedModules.length} of {courseMaterial.modules.length} modules
+                            {learningState.completedModules.length} of{' '}
+                            {courseMaterial.modules.length} modules
                           </span>
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-slate-700">
@@ -1806,7 +2133,7 @@ export default function LearningPage() {
                       <div className="text-sm text-gray-400">
                         <p className="mb-2 flex items-center gap-2">
                           <BookOpen size={14} className="text-primary" />
-                          Module Completion Checklist:
+                          Module Completion Checklist (for {currentUserId?.slice(-6)}):
                         </p>
                         <ul className="ml-6 space-y-1">
                           {courseMaterial.modules.map((module, index) => (
@@ -1834,7 +2161,7 @@ export default function LearningPage() {
                 </motion.div>
               )}
 
-              {/* Certificate Achievement Banner */}
+              {/* Certificate Achievement Banner - USER-SPECIFIC CERTIFICATE */}
               {userCertificate && (
                 <motion.div
                   className="mt-6 animate-pulse rounded-2xl border-2 border-yellow-400/50 bg-gradient-to-r from-slate-800/80 to-slate-700/80 p-8 text-center shadow-xl backdrop-blur-sm"
@@ -1845,8 +2172,12 @@ export default function LearningPage() {
                 >
                   <Trophy className="mx-auto mb-4 h-16 w-16 text-yellow-400" />
                   <h3 className="mb-2 text-3xl font-bold text-yellow-400">Course Completed! 🎉</h3>
-                  <p className="mb-6 text-lg text-gray-200">
-                    You have successfully earned your NFT certificate!
+                  <p className="mb-2 text-lg text-gray-200">
+                    Congratulations! You have successfully earned your NFT certificate!
+                  </p>
+                  <p className="mb-6 font-mono text-sm text-gray-400">
+                    Certificate issued to: {currentUserId?.slice(0, 20)}...
+                    {currentUserId?.slice(-8)}
                   </p>
                   <div className="flex items-center justify-center gap-4">
                     <button
@@ -1854,7 +2185,7 @@ export default function LearningPage() {
                       className="rounded-lg bg-gradient-to-r from-yellow-500 to-yellow-600 px-6 py-3 font-medium text-white transition-all duration-200 hover:scale-105 hover:from-yellow-600 hover:to-yellow-700 hover:shadow-lg"
                     >
                       <Award className="mr-2 inline h-4 w-4" />
-                      View Certificate
+                      View Your Certificate
                     </button>
                     <button
                       onClick={() => {
@@ -1865,6 +2196,62 @@ export default function LearningPage() {
                       <RotateCcw className="h-4 w-4" />
                       Review Course
                     </button>
+                  </div>
+
+                  {/* Certificate Details */}
+                  <div className="mt-6 rounded-lg bg-slate-800/60 p-4">
+                    <h4 className="mb-3 text-sm font-semibold text-yellow-300">
+                      Certificate Details
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <span className="text-gray-400">Token ID:</span>
+                        <div className="font-mono text-yellow-400">#{userCertificate.tokenId}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Issue Date:</span>
+                        <div className="text-yellow-400">
+                          {new Date(userCertificate.completedAt / 1000000).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Course:</span>
+                        <div className="truncate text-yellow-400">{userCertificate.courseName}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">User ID:</span>
+                        <div className="font-mono text-yellow-400">
+                          {currentUserId?.slice(-8)}...
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Debug Information (Development Only) */}
+              {process.env.NODE_ENV === 'development' && (
+                <motion.div
+                  className="mt-6 rounded-lg border border-gray-600/50 bg-gray-800/30 p-4 font-mono text-xs"
+                  transition={MOTION_TRANSITION}
+                  initial={{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(10px)' }}
+                  whileInView={{ opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' }}
+                  viewport={{ once: true, amount: 0.2 }}
+                >
+                  <h4 className="mb-2 text-gray-400">Debug Information (Dev Only)</h4>
+                  <div className="space-y-1 text-gray-500">
+                    <div>User ID: {currentUserId}</div>
+                    <div>Course ID: {courseId}</div>
+                    <div>Current Module: {learningState.currentModuleIndex + 1}</div>
+                    <div>Completed Modules: {learningState.completedModules.length}</div>
+                    <div>Overall Progress: {Math.round(learningState.overallProgress)}%</div>
+                    <div>Reading Progress: {Math.round(learningState.readingProgress)}%</div>
+                    <div>Time Spent: {Math.floor(learningState.timeSpent / 60)}m</div>
+                    <div>Session Time: {Math.floor(sessionTimeSpent / 60)}m</div>
+                    <div>Bookmarks: {learningState.bookmarkedModules.length}</div>
+                    <div>Notes: {Object.keys(learningState.moduleNotes).length}</div>
+                    <div>Is Enrolled: {isEnrolled.toString()}</div>
+                    <div>Has Certificate: {!!userCertificate}</div>
                   </div>
                 </motion.div>
               )}
