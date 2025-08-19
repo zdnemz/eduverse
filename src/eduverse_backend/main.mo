@@ -203,10 +203,27 @@ persistent actor EduverseBackend {
       return #err("You must enroll in this course first");
     };
     
-    switch (Quizzes.getQuizByModuleId(courseId, moduleId)) {
-      case null { #err("Quiz not found for this module") };
-      case (?quiz) { #ok(quiz) };
-    }
+    switch (Array.find<Types.CourseInfo>(Courses.courses, func(course) = course.id == courseId)) {
+        case null { return #err("Course not found") };
+        case (?course) {
+          // Check if module exists in course materials
+          switch (Array.find<Types.CourseMaterial>(Materials.materials, func(material) = material.courseId == courseId)) {
+            case null { return #err("Course materials not found") };
+            case (?material) {
+              let moduleExists = Array.find<Types.Module>(material.modules, func(mod) = mod.moduleId == moduleId) != null;
+              if (not moduleExists) {
+                return #err("Module not found in this course");
+              };
+              
+              // Get the quiz
+              switch (Quizzes.getQuizByModuleId(courseId, moduleId)) {
+                case null { #err("Quiz not available for this module") };
+                case (?quiz) { #ok(quiz) };
+              }
+            };
+          }
+        };
+      }
   };
 
   public shared({ caller }) func submitQuiz(
@@ -296,6 +313,53 @@ persistent actor EduverseBackend {
         
         #ok(result)
       };
+    }
+  };
+
+  // FIXED: Get all quizzes for a course - Tambahkan 'query' dan 'async'
+  public query func getQuizzesByCourseId(courseId: Nat): async [Types.CourseQuiz] {
+    Quizzes.getQuizzesByCourseId(courseId) // Panggil dari Quizzes module
+  };
+
+  // FIXED: Get quiz preview - Tambahkan 'query' dan 'async' 
+  public query func getQuizPreview(courseId: Nat, moduleId: Nat): async ?Types.QuizPreview {
+    Quizzes.getQuizPreview(courseId, moduleId) // Panggil dari Quizzes module
+  };
+
+  // FIXED: Validate quiz answers - Tambahkan 'query' dan 'async'
+  public query func validateAnswers(answers: [Types.UserAnswer], quizQuestions: [Types.QuizQuestion]): async Result.Result<Bool, Text> {
+    Quizzes.validateAnswers(answers, quizQuestions) // Panggil dari Quizzes module
+  };
+  
+  // FIXED: Usage example with better error handling - sudah benar dengan 'shared' dan 'async'
+  public shared({ caller }) func getQuizWithValidation(courseId: Nat, moduleId: Nat): async Result.Result<Types.QuizPreview, Text> {
+    // Comprehensive validation
+    if (not isEnrolled(caller, courseId)) {
+      return #err("ENROLLMENT_REQUIRED");
+    };
+
+    // Check if prerequisite modules are completed
+    let progressKey = getUserProgressKey(caller, courseId);
+    switch (userProgress.get(progressKey)) {
+      case null { return #err("NO_PROGRESS_FOUND") };
+      case (?progress) {
+        // Check if previous modules are completed (assuming sequential order)
+        if (moduleId > 1) {
+          let prevModule = Nat.sub(moduleId, 1);
+          let prevModuleCompleted = Array.find<Nat>(
+            progress.completedModules,
+            func(m) = m == prevModule
+          );
+          if (prevModuleCompleted == null) {
+            return #err("PREREQUISITE_NOT_COMPLETED");
+          };
+        };
+      };
+    };
+
+    switch (Quizzes.getQuizPreview(courseId, moduleId)) {
+      case null { #err("QUIZ_NOT_FOUND") };
+      case (?preview) { #ok(preview) };
     }
   };
 

@@ -34,6 +34,7 @@ import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 import { motion, useScroll } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';
+import QuizComponent from './QuizComponent ';
 
 // Import the loading hook
 import { useLoading } from '@/hooks/useLoading';
@@ -45,6 +46,7 @@ import {
   useTimeTracking,
   useProgressStatistics,
 } from '@/hooks/useLearningProgress';
+import { LearningService, useLearningService } from '@/services/learningService';
 
 // Types matching Motoko backend
 interface Module {
@@ -349,204 +351,6 @@ const CodeBlock: React.FC<{ code: string }> = ({ code }) => {
   );
 };
 
-// Quiz Component with Identity Integration
-const QuizComponent: React.FC<{
-  quiz: CourseQuiz;
-  onSubmit: (answers: number[]) => Promise<void>;
-  isSubmitting: boolean;
-  currentUserId: string | null;
-}> = ({ quiz, onSubmit, isSubmitting, currentUserId }) => {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<number[]>(new Array(quiz.questions.length).fill(-1));
-  const [showResults, setShowResults] = useState<boolean[]>(
-    new Array(quiz.questions.length).fill(false)
-  );
-  const [timeLeft, setTimeLeft] = useState(quiz.timeLimit);
-  const [isTimerActive, setIsTimerActive] = useState(true);
-
-  useEffect(() => {
-    if (timeLeft > 0 && isTimerActive) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (timeLeft === 0 && isTimerActive) {
-      handleSubmit();
-    }
-  }, [timeLeft, isTimerActive]);
-
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  const handleAnswerSelect = (answerIndex: number) => {
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = answerIndex;
-    setAnswers(newAnswers);
-  };
-
-  const checkAnswer = () => {
-    const newShowResults = [...showResults];
-    newShowResults[currentQuestionIndex] = true;
-    setShowResults(newShowResults);
-  };
-
-  const nextQuestion = () => {
-    if (currentQuestionIndex < quiz.questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      handleSubmit();
-    }
-  };
-
-  const handleSubmit = async () => {
-    setIsTimerActive(false);
-    await onSubmit(answers);
-  };
-
-  const currentQuestion = quiz.questions[currentQuestionIndex];
-  const hasAnswered = answers[currentQuestionIndex] !== -1;
-  const showResult = showResults[currentQuestionIndex];
-
-  return (
-    <div className="min-h-screen bg-transparent p-4">
-      <div className="mx-auto max-w-4xl">
-        {/* Quiz Header */}
-        <div className="mb-6 rounded-xl bg-white p-6 shadow-lg">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-bold text-white">
-                Q
-              </div>
-              <h1 className="text-2xl font-bold text-gray-800">{quiz.title}</h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <div
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  timeLeft > 60
-                    ? 'bg-green-100 text-green-800'
-                    : timeLeft > 30
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-red-100 text-red-800'
-                }`}
-              >
-                <Clock className="mr-1 inline h-4 w-4" />
-                {formatTime(timeLeft)}
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-gray-500">Question</div>
-                <div className="text-lg font-bold text-blue-600">
-                  {currentQuestionIndex + 1} / {quiz.questions.length}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="h-3 w-full rounded-full bg-gray-200">
-            <div
-              className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300"
-              style={{ width: `${((currentQuestionIndex + 1) / quiz.questions.length) * 100}%` }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Question */}
-        <div className="rounded-xl bg-white p-8 shadow-lg">
-          <h2 className="mb-6 text-xl font-bold text-gray-800">{currentQuestion.question}</h2>
-
-          <div className="mb-8 space-y-4">
-            {currentQuestion.options.map((option, index) => (
-              <button
-                key={index}
-                onClick={() => handleAnswerSelect(index)}
-                disabled={showResult}
-                className={`w-full rounded-lg border-2 p-4 text-left transition-colors ${
-                  showResult
-                    ? index === currentQuestion.correctAnswer
-                      ? 'border-green-500 bg-green-50 text-green-800'
-                      : index === answers[currentQuestionIndex]
-                        ? 'border-red-500 bg-red-50 text-red-800'
-                        : 'border-gray-200 bg-gray-100 text-gray-600'
-                    : answers[currentQuestionIndex] === index
-                      ? 'border-blue-500 bg-blue-50 text-blue-800'
-                      : 'border-gray-300 bg-white hover:border-blue-300 hover:bg-blue-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span>{option}</span>
-                  {showResult &&
-                    (index === currentQuestion.correctAnswer ? (
-                      <CheckCircle className="text-green-600" size={20} />
-                    ) : index === answers[currentQuestionIndex] ? (
-                      <XCircle className="text-red-600" size={20} />
-                    ) : null)}
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              {hasAnswered && !showResult && (
-                <button
-                  onClick={checkAnswer}
-                  className="rounded-lg bg-blue-600 px-6 py-2 font-medium text-white transition-colors hover:bg-blue-700"
-                >
-                  Check Answer
-                </button>
-              )}
-            </div>
-
-            <div>
-              {showResult && (
-                <button
-                  onClick={nextQuestion}
-                  className="rounded-lg bg-blue-600 px-6 py-2 font-medium text-white transition-colors hover:bg-blue-700"
-                >
-                  {currentQuestionIndex === quiz.questions.length - 1
-                    ? 'Finish Quiz'
-                    : 'Next Question'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {showResult && (
-            <div
-              className={`mt-6 rounded-lg p-4 ${
-                answers[currentQuestionIndex] === currentQuestion.correctAnswer
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}
-            >
-              {answers[currentQuestionIndex] === currentQuestion.correctAnswer ? (
-                <div className="flex items-center gap-2">
-                  <CheckCircle size={20} />
-                  <span className="font-medium">Correct! Your answer is right.</span>
-                </div>
-              ) : (
-                <div>
-                  <div className="mb-2 flex items-center gap-2">
-                    <XCircle size={20} />
-                    <span className="font-medium">
-                      Incorrect. The correct answer is: "
-                      {currentQuestion.options[currentQuestion.correctAnswer]}"
-                    </span>
-                  </div>
-                  {currentQuestion.explanation && (
-                    <p className="mt-2 text-sm opacity-90">{currentQuestion.explanation}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // Certificate Display Component - ENHANCED WITH NAVY DESIGN
 const CertificateDisplay: React.FC<{
   certificate: Certificate;
@@ -746,6 +550,7 @@ export default function LearningPage() {
   const [isInitializingUser, setIsInitializingUser] = useState(true);
   const [userStateManager] = useState(() => UserStateManager.getInstance());
   const [persistentUserState, setPersistentUserState] = useState<PersistentUserState | null>(null);
+  const learningService = useLearningService(actor);
 
   // Enhanced Learning Progress Hook Integration - NOW USING PROPER USER ID
   const [learningState, learningActions] = useLearningProgress(
@@ -991,6 +796,9 @@ export default function LearningPage() {
       try {
         const courseIdNum = BigInt(courseId);
 
+        // Create learning service instance
+        const service = new LearningService(actor);
+
         // Fetch course info
         console.log('📖 Fetching course info...');
         const courseResult = await actor.getCourseById(courseIdNum);
@@ -1005,40 +813,32 @@ export default function LearningPage() {
         setCourseInfo(convertedCourse[0]);
         console.log('✅ Course info loaded:', convertedCourse[0].title);
 
-        // Check enrollment status for THIS SPECIFIC USER
+        // Check enrollment status
         console.log(`🎫 Checking enrollment for user: ${currentUserId.slice(0, 20)}...`);
         const enrollments = await actor.getMyEnrollments();
         const convertedEnrollments = convertBigIntToString(enrollments);
         const enrolled = convertedEnrollments.some((e: any) => e.courseId === Number(courseIdNum));
         setIsEnrolled(enrolled);
 
-        console.log(
-          `✅ Enrollment status for user ${currentUserId.slice(0, 20)}...: ${enrolled ? 'ENROLLED' : 'NOT ENROLLED'}`
-        );
+        console.log(`✅ Enrollment status: ${enrolled ? 'ENROLLED' : 'NOT ENROLLED'}`);
 
         if (enrolled) {
-          // Check for existing certificate first - REDIRECT IF EXISTS
+          // Check for existing certificate first
           console.log('🎓 Checking for existing certificate...');
-          const certificates = await actor.getMyCertificates();
-          const convertedCertificates = convertBigIntToString(certificates);
-          const courseCert = convertedCertificates.find(
-            (cert: Certificate) => cert.courseId === Number(courseIdNum)
+          const certificates = await service.getUserCertificates();
+          const courseCert = certificates.find(
+            (cert: any) => cert.courseId === Number(courseIdNum)
           );
 
           if (courseCert) {
             setUserCertificate(courseCert);
             setCurrentView('certificate');
-            console.log(
-              '🎓 Certificate found - redirecting to certificate view for user:',
-              currentUserId.slice(0, 20) + '...',
-              'Token:',
-              courseCert.tokenId
-            );
+            console.log('🎓 Certificate found - redirecting to certificate view');
             stopLoading();
             return;
           }
 
-          // Fetch course materials for enrolled user
+          // Fetch course materials
           console.log('📘 Fetching course materials...');
           const materialsResult = await actor.getCourseMaterials(courseIdNum);
 
@@ -1055,22 +855,21 @@ export default function LearningPage() {
               'modules'
             );
 
-            // Restore progress for THIS SPECIFIC USER
+            // Restore user progress
             await restoreUserProgress(courseIdNum);
 
-            // Load final quiz data
+            // Load final quiz data from Motoko backend
             await loadFinalQuizData(Number(courseIdNum), enhancedMaterials);
+
+            // Check module quiz availability
+            await checkModuleQuizAvailability(Number(courseIdNum));
           } else {
             setError(materialsResult.err || 'Failed to load course materials');
             console.error('❌ Failed to load materials:', materialsResult.err);
           }
         }
       } catch (err) {
-        console.error(
-          '❌ Error fetching course data for user:',
-          currentUserId.slice(0, 20) + '...',
-          err
-        );
+        console.error('❌ Error fetching course data:', err);
         setError('Failed to load course data. Please try again.');
         toast.error('Failed to load course data');
       } finally {
@@ -1126,23 +925,26 @@ export default function LearningPage() {
 
   // Load final quiz data from backend
   const loadFinalQuizData = async (courseIdNum: number, materials: CourseMaterial) => {
-    if (!actor) return;
+    if (!actor || !learningService) return;
 
     try {
-      console.log('🧠 Loading final quiz data for course:', courseIdNum);
-      // Try to get quiz for the last module or a general final quiz
-      const finalQuizResult = await actor.getQuiz(BigInt(courseIdNum), BigInt(999));
+      console.log('🎯 Loading final quiz from Motoko backend for course:', courseIdNum);
+      setIsLoadingQuiz(true);
 
-      if ('ok' in finalQuizResult) {
-        const convertedQuiz = convertBigIntToString(finalQuizResult.ok);
-        setFinalQuizData(convertedQuiz);
-        console.log('✅ Final quiz loaded from backend');
+      // ✅ FIXED: Use instance method instead of static
+      const finalQuiz = await learningService.getFinalQuiz(courseIdNum);
+
+      if (finalQuiz) {
+        setFinalQuizData(finalQuiz);
+        console.log('✅ Final quiz loaded from Motoko backend:', finalQuiz.title);
       } else {
-        // Create fallback quiz from existing modules
+        console.log('⚠️  No final quiz found in backend, creating fallback...');
+
+        // Create fallback quiz only if no backend quiz exists
         const fallbackQuiz: CourseQuiz = {
           courseId: courseIdNum,
           moduleId: 999,
-          title: 'Final Assessment - ' + courseInfo?.title,
+          title: 'Final Assessment - ' + (courseInfo?.title || 'Course'),
           questions: materials.modules.map((module, index) => ({
             questionId: index + 1,
             question: `What is the main concept covered in "${module.title}"?`,
@@ -1152,17 +954,46 @@ export default function LearningPage() {
               'Practical applications and examples',
               'Theoretical foundations',
             ],
-            correctAnswer: 1,
+            correctAnswer: 1, // Index of correct answer
             explanation: `This covers the core concepts from the module: ${module.title}`,
           })),
           passingScore: 75,
-          timeLimit: 900,
+          timeLimit: 900, // 15 minutes
         };
+
         setFinalQuizData(fallbackQuiz);
         console.log('✅ Fallback final quiz created');
       }
     } catch (error) {
-      console.log('⚠️  Error loading final quiz from backend:', error);
+      console.error('❌ Error loading final quiz:', error);
+
+      // Create basic fallback on error
+      const errorFallbackQuiz: CourseQuiz = {
+        courseId: courseIdNum,
+        moduleId: 999,
+        title: 'Final Assessment - ' + (courseInfo?.title || 'Course'),
+        questions: [
+          {
+            questionId: 1,
+            question: 'What did you learn in this course?',
+            options: [
+              'Basic concepts',
+              'Advanced techniques',
+              'Practical skills',
+              'All of the above',
+            ],
+            correctAnswer: 3,
+            explanation: 'This course covered comprehensive learning across all areas.',
+          },
+        ],
+        passingScore: 75,
+        timeLimit: 300,
+      };
+
+      setFinalQuizData(errorFallbackQuiz);
+      console.log('🔧 Error fallback quiz created');
+    } finally {
+      setIsLoadingQuiz(false);
     }
   };
 
@@ -1234,44 +1065,28 @@ export default function LearningPage() {
   };
 
   const handleStartQuiz = async () => {
-    if (!actor || !courseId || !courseMaterial || !currentUserId) return;
+    if (!actor || !courseId || !courseMaterial || !currentUserId || !learningService) return;
 
-    console.log(`🧠 User ${currentUserId.slice(0, 20)}... starting quiz for course ${courseId}`);
+    console.log(
+      `🧠 User ${currentUserId.slice(0, 20)}... starting final quiz for course ${courseId}`
+    );
     setIsLoadingQuiz(true);
     startLoading();
 
     try {
-      let quizToUse = finalQuizData;
-
-      if (!quizToUse) {
-        // Fallback quiz creation
-        quizToUse = {
-          courseId: Number(courseId),
-          moduleId: 999,
-          title: 'Final Quiz - ' + courseInfo?.title,
-          questions: courseMaterial.modules.map((module, index) => ({
-            questionId: index + 1,
-            question: `What is the main concept covered in "${module.title}"?`,
-            options: [
-              'Basic understanding of the topic',
-              'Advanced implementation techniques',
-              'Practical applications and examples',
-              'Theoretical foundations',
-            ],
-            correctAnswer: 1,
-            explanation: `This covers the core concepts from the module: ${module.title}`,
-          })),
-          passingScore: 75,
-          timeLimit: 900,
-        };
-      }
-
-      setCurrentQuiz(quizToUse);
+      setCurrentQuiz({
+        moduleId: 1, 
+        courseId: Number(courseId),
+        title: 'Final Assessment',
+        questions: [], // Akan diload oleh QuizComponent baru
+        passingScore: 75,
+        timeLimit: 15,
+      });
       setCurrentView('quiz');
       console.log('✅ Quiz started for user:', currentUserId.slice(0, 20) + '...');
     } catch (error) {
-      toast.error('Failed to load quiz');
       console.error('❌ Quiz loading error for user:', currentUserId.slice(0, 20) + '...', error);
+      toast.error('Failed to load quiz. Please try again.');
     } finally {
       setIsLoadingQuiz(false);
       stopLoading();
@@ -1279,7 +1094,7 @@ export default function LearningPage() {
   };
 
   const handleQuizSubmit = async (answers: number[]) => {
-    if (!actor || !courseId || !currentQuiz || !currentUserId) return;
+    if (!actor || !courseId || !currentQuiz || !currentUserId || !learningService) return;
 
     console.log(`📝 User ${currentUserId.slice(0, 20)}... submitting quiz for course ${courseId}`);
     setIsSubmittingQuiz(true);
@@ -1292,36 +1107,33 @@ export default function LearningPage() {
         selectedAnswer: answer,
       }));
 
-      // Try to submit to backend first
+      let quizResult: any = null;
+
+      // Try to submit to Motoko backend first
       try {
-        const submitResult = await actor.submitQuiz(
-          BigInt(courseId),
-          BigInt(currentQuiz.moduleId),
-          formattedAnswers.map((a) => ({
-            questionId: BigInt(a.questionId),
-            selectedAnswer: BigInt(a.selectedAnswer),
-          }))
+        // ✅ FIXED: Use instance method instead of static
+        quizResult = await learningService.submitQuiz(
+          Number(courseId),
+          currentQuiz.moduleId,
+          formattedAnswers
         );
 
-        if ('ok' in submitResult) {
-          const result = convertBigIntToString(submitResult.ok);
-          console.log(
-            '✅ Quiz submitted to backend for user:',
-            currentUserId.slice(0, 20) + '...',
-            'Score:',
-            result.score + '%'
-          );
+        if (quizResult) {
+          console.log('✅ Quiz submitted to Motoko backend:', {
+            score: quizResult.score,
+            passed: quizResult.passed,
+          });
 
-          if (result.passed) {
-            toast.success(`Quiz passed with ${result.score}%! Generating certificate...`);
+          if (quizResult.passed) {
+            toast.success(`🎉 Quiz passed with ${quizResult.score}%! Generating certificate...`);
 
-            // Complete the course using learning actions
+            // Check for certificate after successful quiz
             setTimeout(async () => {
               try {
-                const certificates = await actor.getMyCertificates();
-                const convertedCertificates = convertBigIntToString(certificates);
-                const courseCert = convertedCertificates.find(
-                  (cert: Certificate) => cert.courseId === Number(courseId)
+                // ✅ FIXED: Use instance method instead of static
+                const certificates = await learningService.getUserCertificates();
+                const courseCert = certificates.find(
+                  (cert: any) => cert.courseId === Number(courseId)
                 );
 
                 if (courseCert) {
@@ -1340,44 +1152,29 @@ export default function LearningPage() {
                     userStateManager.saveUserState(updatedState);
                   }
 
-                  toast.success('🎉 Congratulations! Your certificate has been generated!');
-                  console.log(
-                    '🎓 Certificate generated for user:',
-                    currentUserId.slice(0, 20) + '...',
-                    'Token:',
-                    courseCert.tokenId
-                  );
+                  toast.success('🎓 Congratulations! Your certificate has been generated!');
+                  console.log('🎓 Certificate generated:', courseCert.tokenId);
+                } else {
+                  console.log('⏳ Certificate not yet available, may take a moment...');
+                  toast.info('Certificate is being generated, please wait...');
                 }
-              } catch (error) {
-                console.error(
-                  '❌ Error checking certificate for user:',
-                  currentUserId.slice(0, 20) + '...',
-                  error
-                );
+              } catch (certError) {
+                console.error('❌ Error checking certificate:', certError);
               }
-            }, 1000);
+            }, 2000);
           } else {
             toast.error(
-              `Quiz failed with ${result.score}%. You need ${currentQuiz.passingScore}% to pass.`
+              `❌ Quiz failed with ${quizResult.score}%. You need ${currentQuiz.passingScore}% to pass.`
             );
-            console.log(
-              '❌ Quiz failed for user:',
-              currentUserId.slice(0, 20) + '...',
-              'Score:',
-              result.score + '%'
-            );
+            console.log('❌ Quiz failed:', quizResult.score + '%');
           }
-        } else {
-          throw new Error(submitResult.err || 'Failed to submit quiz');
         }
       } catch (backendError) {
-        console.error(
-          '❌ Backend submission failed for user:',
-          currentUserId.slice(0, 20) + '...',
-          backendError
-        );
+        console.error('❌ Backend submission failed:', backendError);
 
-        // Fallback calculation if backend fails
+        // Fallback calculation if Motoko backend fails
+        console.log('🔧 Using fallback quiz calculation...');
+
         const correctAnswers = currentQuiz.questions.reduce((acc, question, index) => {
           return acc + (answers[index] === question.correctAnswer ? 1 : 0);
         }, 0);
@@ -1385,36 +1182,32 @@ export default function LearningPage() {
         const score = Math.round((correctAnswers / currentQuiz.questions.length) * 100);
         const passed = score >= currentQuiz.passingScore;
 
-        const quizResult: QuizResult = {
+        quizResult = {
           userId: currentUserId,
           courseId: Number(courseId),
           moduleId: currentQuiz.moduleId,
           score,
           passed,
           completedAt: Date.now() * 1000000,
-          answers: [],
+          answers: formattedAnswers,
         };
 
         setQuizResults([quizResult]);
-        console.log(
-          '🔧 Fallback quiz result for user:',
-          currentUserId.slice(0, 20) + '...',
-          'Score:',
-          score + '%'
-        );
+        console.log('🔧 Fallback quiz result calculated:', { score, passed });
 
         if (passed) {
-          toast.success(`Quiz passed with ${score}%! Generating certificate...`);
+          toast.success(`🎉 Quiz passed with ${score}%! Generating certificate...`);
 
+          // Generate fallback certificate
           setTimeout(async () => {
-            const certificate: Certificate = {
+            const fallbackCertificate: Certificate = {
               tokenId: Date.now(),
               userId: currentUserId,
               courseId: Number(courseId),
               courseName: courseInfo?.title || 'Course',
               completedAt: Date.now() * 1000000,
               issuer: 'Learning Platform',
-              certificateHash: 'hash-' + Date.now(),
+              certificateHash: 'fallback-hash-' + Date.now(),
               metadata: {
                 name: `Certificate - ${courseInfo?.title}`,
                 description: `Certificate of completion for ${courseInfo?.title}`,
@@ -1423,11 +1216,11 @@ export default function LearningPage() {
               },
             };
 
-            setUserCertificate(certificate);
+            setUserCertificate(fallbackCertificate);
             setCurrentView('certificate');
 
             // Complete course in learning state
-            await learningActions.completeCourse(certificate.tokenId);
+            await learningActions.completeCourse(fallbackCertificate.tokenId);
 
             // Update persistent state
             if (persistentUserState) {
@@ -1438,31 +1231,41 @@ export default function LearningPage() {
               userStateManager.saveUserState(updatedState);
             }
 
-            toast.success('🎉 Congratulations! Your certificate has been generated!');
-            console.log(
-              '🎓 Fallback certificate generated for user:',
-              currentUserId.slice(0, 20) + '...',
-              'Token:',
-              certificate.tokenId
-            );
-          }, 1000);
+            toast.success('🎓 Congratulations! Your certificate has been generated!');
+            console.log('🎓 Fallback certificate generated');
+          }, 1500);
         } else {
-          toast.error(`Quiz failed with ${score}%. You need ${currentQuiz.passingScore}% to pass.`);
+          toast.error(
+            `❌ Quiz failed with ${score}%. You need ${currentQuiz.passingScore}% to pass.`
+          );
         }
       }
 
       setCurrentQuiz(null);
       setCurrentView('learning');
     } catch (error) {
-      console.error(
-        '❌ Quiz submission error for user:',
-        currentUserId.slice(0, 20) + '...',
-        error
-      );
-      toast.error('Failed to submit quiz');
+      console.error('❌ Quiz submission error:', error);
+      toast.error('Failed to submit quiz. Please try again.');
     } finally {
       setIsSubmittingQuiz(false);
       stopLoading();
+    }
+  };
+
+  const checkModuleQuizAvailability = async (courseIdNum: number) => {
+    if (!learningService) return {};
+
+    try {
+      console.log('📋 Checking module quiz availability...');
+
+      // ✅ FIXED: Use instance method instead of static
+      const availability = await learningService.getQuizAvailability(courseIdNum);
+      console.log('✅ Module quiz availability:', availability);
+
+      return availability;
+    } catch (error) {
+      console.error('❌ Error checking quiz availability:', error);
+      return {};
     }
   };
 
@@ -1483,7 +1286,6 @@ export default function LearningPage() {
   };
 
   // ====== USER STATE DISPLAY COMPONENT ======
-
 
   // Error state or not enrolled - USER-SPECIFIC MESSAGING WITH PERSISTENT STATE
   if (error || !isEnrolled) {
@@ -1592,10 +1394,18 @@ export default function LearningPage() {
           </div>
 
           <QuizComponent
-            quiz={currentQuiz}
-            onSubmit={handleQuizSubmit}
-            isSubmitting={isSubmittingQuiz}
+            courseId={Number(courseId)}
+            moduleId={currentQuiz.moduleId}
+            learningService={learningService}
             currentUserId={currentUserId}
+            onQuizComplete={(result) => {
+              // Handle quiz completion
+              handleQuizSubmit([]); // Trigger existing completion logic
+            }}
+            onBack={() => {
+              setCurrentView('learning');
+              setCurrentQuiz(null);
+            }}
           />
         </div>
       </>
@@ -1762,25 +1572,24 @@ export default function LearningPage() {
 
                 <div className="space-y-3">
                   {courseMaterial.modules.map((module, index) => {
+                    const moduleId = Number(module.moduleId);
                     const isUnlocked =
                       index === 0 ||
                       learningState.completedModules.includes(
                         courseMaterial.modules[index - 1]?.moduleId
                       );
-                    const isCompleted = learningState.completedModules.includes(module.moduleId);
+                    const isCompleted = learningState.completedModules.includes(moduleId);
                     const isCurrent = learningState.currentModuleIndex === index;
-                    const hasPassedQuiz = quizResults.some(
-                      (r) => r.moduleId === module.moduleId && r.passed
-                    );
 
-                    // Get local reading progress for this module
-                    const moduleReadingProgress =
-                      learningState.courseProgress?.moduleProgresses[module.moduleId]
-                        ?.readingProgress || 0;
+                    // Enhanced quiz status from Motoko backend
+                    const moduleQuizResult = quizResults.find((r) => r.moduleId === moduleId);
+                    const hasQuiz = moduleQuizResult !== undefined; // Will be true if quiz exists in backend
+                    const hasPassedQuiz = moduleQuizResult ? moduleQuizResult.passed : false;
+                    const quizScore = moduleQuizResult ? moduleQuizResult.score : 0;
 
                     return (
                       <button
-                        key={module.moduleId}
+                        key={moduleId}
                         onClick={() => handleModuleClick(index)}
                         disabled={!isUnlocked}
                         className={`w-full rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] ${
@@ -1794,22 +1603,26 @@ export default function LearningPage() {
                         }`}
                       >
                         <div className="flex items-start gap-3">
-                          {/* Status Icon */}
+                          {/* Enhanced Status Icon with Quiz Info */}
                           <div
                             className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                               hasPassedQuiz
-                                ? 'bg-yellow-500 text-white'
-                                : isCompleted
-                                  ? 'bg-green-500 text-white'
-                                  : isCurrent && isUnlocked
-                                    ? 'border-white bg-white/20 text-white'
-                                    : isUnlocked
-                                      ? 'border-gray-400 text-gray-400'
-                                      : 'border-gray-500 text-gray-500'
+                                ? 'bg-yellow-500 text-white' // Passed quiz
+                                : hasQuiz && isCompleted
+                                  ? 'bg-orange-500 text-white' // Has quiz but not taken
+                                  : isCompleted
+                                    ? 'bg-green-500 text-white' // Completed, no quiz
+                                    : isCurrent && isUnlocked
+                                      ? 'border-white bg-white/20 text-white'
+                                      : isUnlocked
+                                        ? 'border-gray-400 text-gray-400'
+                                        : 'border-gray-500 text-gray-500'
                             }`}
                           >
                             {hasPassedQuiz ? (
                               <Star size={12} />
+                            ) : hasQuiz && isCompleted ? (
+                              <Brain size={12} />
                             ) : isCompleted ? (
                               <CheckCircle size={12} />
                             ) : !isUnlocked ? (
@@ -1819,7 +1632,7 @@ export default function LearningPage() {
                             )}
                           </div>
 
-                          {/* Content */}
+                          {/* Content with Quiz Status */}
                           <div className="min-w-0 flex-1">
                             <div
                               className="text-sm leading-tight font-semibold"
@@ -1839,27 +1652,11 @@ export default function LearningPage() {
                               }`}
                             >
                               Module {index + 1}
-                              {hasPassedQuiz && <span className="ml-1">⭐</span>}
-                              {moduleReadingProgress > 0 && moduleReadingProgress < 100 && (
-                                <span className="ml-1 text-orange-400">
-                                  ({Math.round(moduleReadingProgress)}% read)
-                                </span>
+                              {hasPassedQuiz && <span className="ml-1">⭐ Quiz: {quizScore}%</span>}
+                              {hasQuiz && !hasPassedQuiz && isCompleted && (
+                                <span className="ml-1 text-orange-400">🧠 Quiz Available</span>
                               )}
                             </div>
-
-                            {/* Reading progress bar */}
-                            {isUnlocked && moduleReadingProgress > 0 && (
-                              <div className="mt-2">
-                                <div className="h-1 w-full rounded-full bg-slate-600">
-                                  <div
-                                    className={`h-full rounded-full transition-all duration-300 ${
-                                      isCompleted ? 'bg-green-400' : 'bg-blue-400'
-                                    }`}
-                                    style={{ width: `${moduleReadingProgress}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
                           </div>
                         </div>
                       </button>

@@ -68,6 +68,30 @@ module {
     selectedAnswer: Nat;
   };
 
+  public type QuizQuestionPreview = {
+    questionId: Nat;
+    question: Text;
+    options: [Text];
+  };
+
+  public type QuizPreview = {
+    courseId: Nat;
+    moduleId: Nat;
+    title: Text;
+    questions: [QuizQuestionPreview];
+    passingScore: Nat;
+    timeLimit: Nat;
+    totalQuestions: Nat;
+  };
+
+  public type DetailedQuizScore = {
+    totalQuestions: Nat;
+    correctAnswers: Nat;
+    incorrectAnswers: [Nat]; // Indices of incorrect answers
+    scorePercentage: Nat;
+    passed: Bool;
+  };
+
   // Type untuk hasil quiz
   public type QuizResult = {
     userId: Principal;

@@ -1,4 +1,7 @@
 import Types "../Types";
+import Result "mo:base/Result";
+import Array "mo:base/Array";
+import Nat "mo:base/Nat";
 
 module {
   public let quizzes : [Types.CourseQuiz] = [
@@ -358,7 +361,7 @@ module {
     // Tambahan quiz untuk course lain bisa ditambahkan di sini
   ];
 
-  // Helper functions untuk quiz management
+// Helper functions untuk quiz management
   public func getQuizByModuleId(courseId: Nat, moduleId: Nat) : ?Types.CourseQuiz {
     for (quiz in quizzes.vals()) {
       if (quiz.courseId == courseId and quiz.moduleId == moduleId) {
@@ -366,6 +369,63 @@ module {
       };
     };
     null
+  };
+
+  // TAMBAHAN: Get all quizzes for a course
+  public func getQuizzesByCourseId(courseId: Nat) : [Types.CourseQuiz] {
+    Array.filter<Types.CourseQuiz>(quizzes, func(quiz) = quiz.courseId == courseId)
+  };
+
+  // TAMBAHAN: Get quiz preview (without correct answers)
+  public func getQuizPreview(courseId: Nat, moduleId: Nat) : ?Types.QuizPreview {
+    switch (getQuizByModuleId(courseId, moduleId)) {
+      case null { null };
+      case (?quiz) {
+        let previewQuestions = Array.map<Types.QuizQuestion, Types.QuizQuestionPreview>(
+          quiz.questions,
+          func(q) = {
+            questionId = q.questionId;
+            question = q.question;
+            options = q.options;
+          }
+        );
+        
+        ?{
+          courseId = quiz.courseId;
+          moduleId = quiz.moduleId;
+          title = quiz.title;
+          questions = previewQuestions;
+          passingScore = quiz.passingScore;
+          timeLimit = quiz.timeLimit;
+          totalQuestions = quiz.questions.size();
+        }
+      };
+    }
+  };
+
+  // TAMBAHAN: Validate quiz answers format
+  public func validateAnswers(answers: [Types.UserAnswer], quizQuestions: [Types.QuizQuestion]) : Result.Result<Bool, Text> {
+    if (answers.size() != quizQuestions.size()) {
+      return #err("Number of answers doesn't match number of questions");
+    };
+
+    for (answer in answers.vals()) {
+      let questionExists = Array.find<Types.QuizQuestion>(
+        quizQuestions, 
+        func(q) = q.questionId == answer.questionId
+      );
+      
+      switch (questionExists) {
+        case null { return #err("Invalid question ID: " # Nat.toText(answer.questionId)) };
+        case (?question) {
+          if (answer.selectedAnswer >= question.options.size()) {
+            return #err("Invalid answer option for question: " # Nat.toText(answer.questionId));
+          };
+        };
+      };
+    };
+
+    #ok(true)
   };
 
   public func calculateScore(answers: [Nat], correctAnswers: [Nat]) : Nat {
@@ -388,5 +448,34 @@ module {
 
   public func hasPassedQuiz(score: Nat, passingScore: Nat) : Bool {
     score >= passingScore
+  };
+
+  // TAMBAHAN: Enhanced score calculation with detailed feedback
+  public func calculateDetailedScore(answers: [Nat], correctAnswers: [Nat]) : Types.DetailedQuizScore {
+    var correctCount: Nat = 0;
+    var incorrectAnswers: [Nat] = [];
+    var i: Nat = 0;
+    
+    while (i < answers.size() and i < correctAnswers.size()) {
+      if (answers[i] == correctAnswers[i]) {
+        correctCount += 1;
+      } else {
+        incorrectAnswers := Array.append(incorrectAnswers, [i]);
+      };
+      i += 1;
+    };
+    
+    let totalQuestions = correctAnswers.size();
+    let percentage = if (totalQuestions > 0) {
+      (correctCount * 100) / totalQuestions
+    } else { 0 };
+
+    {
+      totalQuestions = totalQuestions;
+      correctAnswers = correctCount;
+      incorrectAnswers = incorrectAnswers;
+      scorePercentage = percentage;
+      passed = percentage >= 60; // Default passing score
+    }
   };
 };
