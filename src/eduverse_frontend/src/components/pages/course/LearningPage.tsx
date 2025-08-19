@@ -1,4 +1,4 @@
-// Enhanced LearningPage.tsx with proper Internet Identity integration
+// Enhanced LearningPage.tsx with proper Internet Identity integration and persistent user state - FIXED VERSION
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,8 @@ import {
   Target,
   Timer,
   Zap,
+  BookOpenCheck,
+  GraduationCap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { actor as createActor } from '@/lib/actor';
@@ -33,13 +35,16 @@ import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 import { motion, useScroll } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';
 
+// Import the loading hook
+import { useLoading } from '@/hooks/useLoading';
+
 // Import the enhanced hooks and storage - NOW PROPERLY USING IDENTITY
 import {
   useLearningProgress,
   useReadingProgress as useReadingProgressHook,
   useTimeTracking,
   useProgressStatistics,
-} from '../../../hooks/useLearningProgress';
+} from '@/hooks/useLearningProgress';
 
 // Types matching Motoko backend
 interface Module {
@@ -119,6 +124,95 @@ interface Certificate {
     image: string;
     attributes: Array<{ trait_type: string; value: string }>;
   };
+}
+
+interface UserProfile {
+  id: any;
+  name: string;
+  email: string[];
+  createdAt: bigint;
+  updatedAt: any[];
+}
+
+// ====== PERSISTENT USER STATE MANAGEMENT ======
+
+interface PersistentUserState {
+  userId: string;
+  userName: string;
+  principal: string;
+  lastSeen: number;
+  profileData?: UserProfile;
+}
+
+class UserStateManager {
+  private static instance: UserStateManager;
+  private readonly STORAGE_KEY = 'eduverse_user_state';
+  private readonly SESSION_KEY = 'eduverse_session_active';
+
+  static getInstance(): UserStateManager {
+    if (!UserStateManager.instance) {
+      UserStateManager.instance = new UserStateManager();
+    }
+    return UserStateManager.instance;
+  }
+
+  // Save user state to localStorage
+  saveUserState(state: PersistentUserState): void {
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
+      sessionStorage.setItem(this.SESSION_KEY, 'true');
+      console.log('💾 User state saved:', state.userId.slice(0, 20) + '...');
+    } catch (error) {
+      console.error('❌ Failed to save user state:', error);
+    }
+  }
+
+  // Load user state from localStorage
+  loadUserState(): PersistentUserState | null {
+    try {
+      const saved = localStorage.getItem(this.STORAGE_KEY);
+      if (!saved) return null;
+
+      const state: PersistentUserState = JSON.parse(saved);
+
+      // Check if session is still valid (within 24 hours)
+      const now = Date.now();
+      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+
+      if (now - state.lastSeen > maxAge) {
+        console.log('⏰ User state expired, clearing...');
+        this.clearUserState();
+        return null;
+      }
+
+      console.log('♻️ User state loaded:', state.userId.slice(0, 20) + '...');
+      return state;
+    } catch (error) {
+      console.error('❌ Failed to load user state:', error);
+      return null;
+    }
+  }
+
+  // Update last seen timestamp
+  updateLastSeen(userId: string): void {
+    const existing = this.loadUserState();
+    if (existing && existing.userId === userId) {
+      existing.lastSeen = Date.now();
+      this.saveUserState(existing);
+    }
+  }
+
+  // Clear user state
+  clearUserState(): void {
+    localStorage.removeItem(this.STORAGE_KEY);
+    sessionStorage.removeItem(this.SESSION_KEY);
+    console.log('🗑️ User state cleared');
+  }
+
+  // Check if session is active
+  isSessionActive(): boolean {
+    return sessionStorage.getItem(this.SESSION_KEY) === 'true';
+  }
 }
 
 // Helper functions
@@ -289,11 +383,6 @@ const QuizComponent: React.FC<{
     const newAnswers = [...answers];
     newAnswers[currentQuestionIndex] = answerIndex;
     setAnswers(newAnswers);
-
-    // Log answer selection for this specific user
-    console.log(
-      `User ${currentUserId} answered question ${currentQuestionIndex + 1}: option ${answerIndex + 1}`
-    );
   };
 
   const checkAnswer = () => {
@@ -312,7 +401,6 @@ const QuizComponent: React.FC<{
 
   const handleSubmit = async () => {
     setIsTimerActive(false);
-    console.log(`User ${currentUserId} submitted quiz for course ${quiz.courseId}`);
     await onSubmit(answers);
   };
 
@@ -321,7 +409,7 @@ const QuizComponent: React.FC<{
   const showResult = showResults[currentQuestionIndex];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen bg-transparent p-4">
       <div className="mx-auto max-w-4xl">
         {/* Quiz Header */}
         <div className="mb-6 rounded-xl bg-white p-6 shadow-lg">
@@ -351,15 +439,6 @@ const QuizComponent: React.FC<{
                   {currentQuestionIndex + 1} / {quiz.questions.length}
                 </div>
               </div>
-              {/* User ID Display (for debugging) */}
-              {currentUserId && (
-                <div className="text-right">
-                  <div className="text-xs text-gray-400">User</div>
-                  <div className="font-mono text-xs text-blue-500">
-                    {currentUserId.slice(-8)}...
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -468,77 +547,150 @@ const QuizComponent: React.FC<{
   );
 };
 
-// Certificate Display Component
+// Certificate Display Component - ENHANCED WITH NAVY DESIGN
 const CertificateDisplay: React.FC<{
   certificate: Certificate;
   onViewCertificate: () => void;
+  onViewMaterials: () => void;
+  onChooseNewCourse: () => void;
   userName?: string;
   currentUserId?: string | null;
-}> = ({ certificate, onViewCertificate, userName, currentUserId }) => {
+}> = ({
+  certificate,
+  onViewCertificate,
+  onViewMaterials,
+  onChooseNewCourse,
+  userName,
+  currentUserId,
+}) => {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-yellow-50 to-orange-100 p-4">
-      <div>
-        {/* Certificate */}
-        <div className="mx-auto max-w-2xl rounded-lg border-8 border-yellow-400 bg-white p-8 text-center shadow-2xl">
-          <div className="rounded-lg border-4 border-yellow-300 p-6">
-            <div className="mb-4 text-yellow-600">
-              <Award size={64} className="mx-auto" />
-            </div>
-            <h1 className="mb-2 text-3xl font-bold text-gray-800">CERTIFICATE OF COMPLETION</h1>
-            <div className="mb-6 text-lg text-gray-600">{certificate.courseName}</div>
+    <div className="flex min-h-screen items-center justify-center bg-transparent p-4">
+      <div className="w-full max-w-4xl">
+        {/* Certificate Container - WHITE BACKGROUND */}
+        <div className="border-navy-200 mx-auto max-w-3xl rounded-2xl border-4 bg-white p-8 shadow-2xl">
+          {/* Certificate Content */}
+          <div className="border-navy-300 from-navy-50 relative rounded-lg border-4 bg-gradient-to-br to-blue-50 p-8 text-center">
+            {/* Decorative Elements */}
+            <div className="border-navy-200 absolute top-4 left-4 h-16 w-16 rounded-full border-4 opacity-20"></div>
+            <div className="border-navy-200 absolute top-4 right-4 h-16 w-16 rounded-full border-4 opacity-20"></div>
+            <div className="border-navy-200 absolute bottom-4 left-4 h-12 w-12 rounded-full border-4 opacity-20"></div>
+            <div className="border-navy-200 absolute right-4 bottom-4 h-12 w-12 rounded-full border-4 opacity-20"></div>
 
-            <div className="mb-4 text-xl text-gray-700">This certifies that</div>
-            <div className="mb-4 border-b-2 border-blue-200 pb-2 text-3xl font-bold text-blue-600">
-              {userName || (currentUserId ? `User ${currentUserId.slice(-8)}...` : 'Student')}
-            </div>
-            <div className="mb-6 text-lg text-gray-700">
-              has successfully completed the course
-              <br />
-              <strong>"{certificate.courseName}"</strong>
-              <br />
-              and earned this NFT certificate
-            </div>
+            {/* Certificate Header */}
+            <div className="relative z-10">
+              <div className="text-navy-600 mb-6">
+                <GraduationCap size={80} className="mx-auto" />
+              </div>
 
-            <div className="mt-8 flex items-end justify-between border-t-2 border-gray-200 pt-6">
-              <div className="text-left">
-                <div className="mb-1 text-sm text-gray-500">Completion Date</div>
-                <div className="font-semibold">
-                  {new Date(certificate.completedAt / 1000000).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
+              <h1 className="text-navy-800 mb-4 text-4xl font-bold tracking-wide">
+                CERTIFICATE OF COMPLETION
+              </h1>
+
+              <div className="from-navy-400 mx-auto mb-8 h-1 w-32 rounded-full bg-gradient-to-r to-blue-500"></div>
+
+              <div className="text-navy-600 mb-6 text-lg font-medium">This is to certify that</div>
+
+              {/* Student Name - ENHANCED STYLING */}
+              <div className="relative mb-8">
+                <div className="text-navy-800 mb-2 text-4xl font-bold tracking-wide">
+                  {userName || 'Distinguished Learner'}
+                </div>
+                <div className="bg-navy-300 mx-auto h-0.5 w-64"></div>
+                <div className="text-navy-500 mt-2 text-sm italic">Student Name</div>
+              </div>
+
+              <div className="text-navy-700 mb-6 text-lg leading-relaxed">
+                has successfully completed the comprehensive course
+              </div>
+
+              {/* Course Name - ENHANCED STYLING */}
+              <div className="relative mb-8">
+                <div className="text-navy-800 mb-2 text-2xl leading-tight font-bold">
+                  "{certificate.courseName}"
+                </div>
+                <div className="text-navy-500 text-sm italic">Course Title</div>
+              </div>
+
+              <div className="text-navy-600 mb-8">
+                and has demonstrated mastery of all required competencies
+                <br />
+                to earn this blockchain-verified NFT certificate
+              </div>
+
+              {/* Certificate Details */}
+              <div className="border-navy-200 mt-10 flex items-center justify-between border-t-2 pt-8">
+                <div className="text-left">
+                  <div className="text-navy-500 mb-1 text-sm tracking-wide uppercase">
+                    Completion Date
+                  </div>
+                  <div className="text-navy-800 text-lg font-semibold">
+                    {new Date(certificate.completedAt / 1000000).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <div className="from-navy-500 mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br to-blue-600">
+                    <Award className="h-8 w-8 text-white" />
+                  </div>
+                  <div className="text-navy-600 text-sm font-medium">Verified</div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-navy-500 mb-1 text-sm tracking-wide uppercase">Issuer</div>
+                  <div className="text-navy-800 text-lg font-semibold">{certificate.issuer}</div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="mb-1 text-sm text-gray-500">Issuer</div>
-                <div className="font-semibold">{certificate.issuer}</div>
-              </div>
-            </div>
 
-            <div className="mt-6 text-xs text-gray-400">
-              Certificate ID: #{certificate.tokenId} • Hash:{' '}
-              {certificate.certificateHash.slice(0, 16)}...
-              {/* User ID for verification */}
-              {currentUserId && (
-                <>
-                  <br />
-                  User ID: {currentUserId.slice(0, 8)}...{currentUserId.slice(-8)}
-                </>
-              )}
+              {/* Certificate Meta Info */}
+              <div className="text-navy-400 border-navy-100 mt-8 border-t pt-4 text-xs">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="font-medium">Certificate ID:</span> #{certificate.tokenId}
+                  </div>
+                  <div>
+                    <span className="font-medium">Hash:</span>{' '}
+                    {certificate.certificateHash.slice(0, 12)}...
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 text-center">
-          <div className="flex justify-center gap-4">
+        {/* Action Buttons - ENHANCED DESIGN */}
+        <div className="mt-8 text-center">
+          <div className="flex flex-wrap justify-center gap-4">
             <button
               onClick={onViewCertificate}
-              className="flex items-center gap-2 rounded-lg bg-yellow-600 px-6 py-3 font-medium text-white transition-colors hover:bg-yellow-700"
+              className="group from-navy-600 to-navy-700 hover:from-navy-700 hover:to-navy-800 flex items-center gap-3 rounded-xl bg-gradient-to-r px-8 py-4 font-semibold text-white shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl"
             >
-              <Award className="h-4 w-4" />
-              View Certificate
+              <Award className="h-5 w-5 transition-transform group-hover:rotate-12" />
+              View Full Certificate
             </button>
+
+            <button
+              onClick={onViewMaterials}
+              className="group flex items-center gap-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-4 font-semibold text-white shadow-lg transition-all duration-300 hover:scale-105 hover:from-blue-700 hover:to-blue-800 hover:shadow-xl"
+            >
+              <BookOpen className="h-5 w-5 transition-transform group-hover:scale-110" />
+              Review Materials
+            </button>
+
+            <button
+              onClick={onChooseNewCourse}
+              className="group border-navy-300 text-navy-700 hover:bg-navy-50 hover:border-navy-400 flex items-center gap-3 rounded-xl border-2 bg-white px-8 py-4 font-semibold shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl"
+            >
+              <BookOpenCheck className="h-5 w-5 transition-transform group-hover:scale-110" />
+              Choose New Course
+            </button>
+          </div>
+
+          {/* Share Certificate */}
+          <div className="mt-6">
             <button
               onClick={() => {
                 navigator.clipboard.writeText(
@@ -546,9 +698,9 @@ const CertificateDisplay: React.FC<{
                 );
                 toast.success('Certificate link copied to clipboard!');
               }}
-              className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-700"
+              className="text-navy-600 hover:text-navy-800 decoration-navy-300 hover:decoration-navy-500 font-medium underline transition-colors"
             >
-              Share Certificate
+              📋 Share Certificate Link
             </button>
           </div>
         </div>
@@ -557,19 +709,12 @@ const CertificateDisplay: React.FC<{
   );
 };
 
-// Loading component
-const LoadingSpinner: React.FC<{ message?: string }> = ({ message = 'Loading...' }) => (
-  <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div className="text-center">
-      <Loader className="mx-auto mb-4 h-8 w-8 animate-spin text-blue-600" />
-      <p className="text-gray-600">{message}</p>
-    </div>
-  </div>
-);
-
 export default function LearningPage() {
   // Get courseId from URL params
   const { courseId } = useParams<{ courseId: string }>();
+
+  // Use loading hook instead of local loading states
+  const { startLoading, stopLoading } = useLoading('learning-page');
 
   // Basic states
   const [currentView, setCurrentView] = useState<'learning' | 'quiz' | 'certificate'>('learning');
@@ -581,9 +726,11 @@ export default function LearningPage() {
   const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
   const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
   const [isEnrolled, setIsEnrolled] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
+
+  // User Profile State
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // Quiz and Certificate states
   const [currentQuiz, setCurrentQuiz] = useState<CourseQuiz | null>(null);
@@ -593,10 +740,12 @@ export default function LearningPage() {
   const [finalQuizData, setFinalQuizData] = useState<CourseQuiz | null>(null);
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
 
-  // Actor and User Identity states - FIXED TO USE PROPER II
+  // ====== ENHANCED USER STATE MANAGEMENT ======
   const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isInitializingUser, setIsInitializingUser] = useState(true);
+  const [userStateManager] = useState(() => UserStateManager.getInstance());
+  const [persistentUserState, setPersistentUserState] = useState<PersistentUserState | null>(null);
 
   // Enhanced Learning Progress Hook Integration - NOW USING PROPER USER ID
   const [learningState, learningActions] = useLearningProgress(
@@ -626,13 +775,31 @@ export default function LearningPage() {
   // Progress statistics hook - IDENTITY INTEGRATED
   const { statistics: globalStatistics, refreshStatistics } = useProgressStatistics();
 
-  // Initialize Internet Identity and Actor - PROPER II INTEGRATION
+  // ====== ENHANCED USER INITIALIZATION WITH PERSISTENCE ======
   useEffect(() => {
     const initializeUserAndActor = async () => {
       try {
-        console.log('🔐 Initializing Internet Identity and Actor...');
+        console.log('🔐 Initializing Internet Identity and Actor with persistence...');
         setIsInitializingUser(true);
+        startLoading();
 
+        // First, try to load persistent user state
+        const savedState = userStateManager.loadUserState();
+        if (savedState && userStateManager.isSessionActive()) {
+          console.log('♻️ Restoring user session:', savedState.userId.slice(0, 20) + '...');
+          setPersistentUserState(savedState);
+          setCurrentUserId(savedState.userId);
+
+          if (savedState.profileData) {
+            setUserProfile(savedState.profileData);
+            console.log('👤 User profile restored:', savedState.profileData.name);
+          }
+
+          // Update last seen timestamp
+          userStateManager.updateLastSeen(savedState.userId);
+        }
+
+        // Initialize Internet Identity and Actor
         const authClient = await getAuthClient();
         const identity = authClient.getIdentity();
         const principal = identity.getPrincipal();
@@ -641,18 +808,53 @@ export default function LearningPage() {
         const newActor = await createActor(identity);
         setActor(newActor);
 
-        // Set user ID from principal
         let userId: string;
+        let userName = 'Anonymous User';
+
         if (principal.isAnonymous()) {
-          console.warn('⚠️  User is anonymous, creating temporary ID');
-          userId = 'anonymous-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+          console.warn('⚠️  User is anonymous');
+          // If we have saved state, use that, otherwise create new anonymous ID
+          if (savedState) {
+            userId = savedState.userId;
+            userName = savedState.userName;
+          } else {
+            userId = 'anonymous-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            userName = 'Anonymous User';
+          }
         } else {
+          // Authenticated user
           userId = principal.toString();
           console.log('✅ User authenticated with II, Principal:', userId.slice(0, 20) + '...');
+
+          // Fetch user profile
+          try {
+            const profileResult = await newActor.getMyProfile();
+            if (profileResult && profileResult.length > 0) {
+              const convertedProfile = convertBigIntToString(profileResult[0]);
+              setUserProfile(convertedProfile);
+              userName = convertedProfile.name;
+              console.log('👤 User profile loaded:', convertedProfile.name);
+            }
+          } catch (profileError) {
+            console.warn('⚠️  Could not load user profile:', profileError);
+          }
         }
 
         setCurrentUserId(userId);
-        console.log('🎯 User ID set:', userId.slice(0, 20) + '...');
+
+        // Save/update persistent user state
+        const newUserState: PersistentUserState = {
+          userId,
+          userName,
+          principal: principal.toString(),
+          lastSeen: Date.now(),
+          profileData: userProfile || undefined,
+        };
+
+        userStateManager.saveUserState(newUserState);
+        setPersistentUserState(newUserState);
+
+        console.log('🎯 User ID set with persistence:', userId.slice(0, 20) + '...');
       } catch (error) {
         console.error('❌ Failed to initialize user and actor:', error);
         setError('Failed to initialize connection');
@@ -662,14 +864,102 @@ export default function LearningPage() {
         const fallbackUserId =
           'fallback-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         setCurrentUserId(fallbackUserId);
-        console.log('🔧 Using fallback user ID:', fallbackUserId);
+
+        const fallbackState: PersistentUserState = {
+          userId: fallbackUserId,
+          userName: 'Fallback User',
+          principal: 'fallback',
+          lastSeen: Date.now(),
+        };
+
+        userStateManager.saveUserState(fallbackState);
+        setPersistentUserState(fallbackState);
+
+        console.log('🔧 Using fallback user ID with persistence:', fallbackUserId);
       } finally {
         setIsInitializingUser(false);
+        stopLoading();
       }
     };
 
     initializeUserAndActor();
-  }, []);
+  }, [startLoading, stopLoading, userStateManager]);
+
+  // ====== PERSISTENT STATE RECOVERY ON PAGE LOAD ======
+  useEffect(() => {
+    const handlePageLoad = () => {
+      // Additional recovery logic for page refresh
+      if (!currentUserId && !isInitializingUser) {
+        const savedState = userStateManager.loadUserState();
+        if (savedState) {
+          console.log(
+            '🔄 Recovering user state after page refresh:',
+            savedState.userId.slice(0, 20) + '...'
+          );
+          setCurrentUserId(savedState.userId);
+          setPersistentUserState(savedState);
+
+          if (savedState.profileData) {
+            setUserProfile(savedState.profileData);
+          }
+
+          toast.success(`Welcome back, ${savedState.userName}!`, {
+            description: 'Your progress has been restored.',
+          });
+        }
+      }
+    };
+
+    // Handle page refresh/reload
+    if (document.readyState === 'complete') {
+      handlePageLoad();
+    } else {
+      window.addEventListener('load', handlePageLoad);
+      return () => window.removeEventListener('load', handlePageLoad);
+    }
+  }, [currentUserId, isInitializingUser, userStateManager]);
+
+  // ====== VISIBILITY CHANGE HANDLER FOR STATE PERSISTENCE ======
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && currentUserId && persistentUserState) {
+        // Page is being hidden, save current state
+        const updatedState: PersistentUserState = {
+          ...persistentUserState,
+          lastSeen: Date.now(),
+          profileData: userProfile || undefined,
+        };
+
+        userStateManager.saveUserState(updatedState);
+        console.log('💾 State saved on visibility change');
+      } else if (!document.hidden && currentUserId) {
+        // Page is visible again, update last seen
+        userStateManager.updateLastSeen(currentUserId);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [currentUserId, persistentUserState, userProfile, userStateManager]);
+
+  // ====== BEFOREUNLOAD HANDLER FOR STATE PERSISTENCE ======
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (currentUserId && persistentUserState) {
+        const updatedState: PersistentUserState = {
+          ...persistentUserState,
+          lastSeen: Date.now(),
+          profileData: userProfile || undefined,
+        };
+
+        userStateManager.saveUserState(updatedState);
+        console.log('💾 State saved before page unload');
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [currentUserId, persistentUserState, userProfile, userStateManager]);
 
   // Scroll progress tracking
   useEffect(() => {
@@ -679,14 +969,14 @@ export default function LearningPage() {
     return () => unsubscribe();
   }, [scrollYProgress]);
 
-  // Fetch course data - USING PROPER USER IDENTITY
+  // Fetch course data - USING PROPER USER IDENTITY WITH PERSISTENCE
   useEffect(() => {
     const fetchCourseData = async () => {
       if (!actor || !courseId || !currentUserId || isInitializingUser) {
         console.log('⏳ Waiting for dependencies...', {
           actor: !!actor,
           courseId,
-          currentUserId,
+          currentUserId: !!currentUserId,
           isInitializingUser,
         });
         return;
@@ -695,7 +985,7 @@ export default function LearningPage() {
       console.log(
         `📚 Fetching course data for User: ${currentUserId.slice(0, 20)}..., Course: ${courseId}`
       );
-      setLoading(true);
+      startLoading();
       setError(null);
 
       try {
@@ -708,7 +998,7 @@ export default function LearningPage() {
 
         if (!convertedCourse || convertedCourse.length === 0) {
           setError('Course not found');
-          setLoading(false);
+          stopLoading();
           return;
         }
 
@@ -727,6 +1017,27 @@ export default function LearningPage() {
         );
 
         if (enrolled) {
+          // Check for existing certificate first - REDIRECT IF EXISTS
+          console.log('🎓 Checking for existing certificate...');
+          const certificates = await actor.getMyCertificates();
+          const convertedCertificates = convertBigIntToString(certificates);
+          const courseCert = convertedCertificates.find(
+            (cert: Certificate) => cert.courseId === Number(courseIdNum)
+          );
+
+          if (courseCert) {
+            setUserCertificate(courseCert);
+            setCurrentView('certificate');
+            console.log(
+              '🎓 Certificate found - redirecting to certificate view for user:',
+              currentUserId.slice(0, 20) + '...',
+              'Token:',
+              courseCert.tokenId
+            );
+            stopLoading();
+            return;
+          }
+
           // Fetch course materials for enrolled user
           console.log('📘 Fetching course materials...');
           const materialsResult = await actor.getCourseMaterials(courseIdNum);
@@ -763,14 +1074,14 @@ export default function LearningPage() {
         setError('Failed to load course data. Please try again.');
         toast.error('Failed to load course data');
       } finally {
-        setLoading(false);
+        stopLoading();
       }
     };
 
     fetchCourseData();
-  }, [actor, courseId, currentUserId, isInitializingUser]);
+  }, [actor, courseId, currentUserId, isInitializingUser, startLoading, stopLoading]);
 
-  // Restore user progress - USER-SPECIFIC PROGRESS RESTORATION
+  // Restore user progress - USER-SPECIFIC PROGRESS RESTORATION WITH PERSISTENCE
   const restoreUserProgress = async (courseIdNum: bigint) => {
     if (!actor || !currentUserId) return;
 
@@ -804,25 +1115,6 @@ export default function LearningPage() {
         convertedQuizResults?.length || 0,
         'results'
       );
-
-      // Check for certificate for THIS USER
-      const certificates = await actor.getMyCertificates();
-      const convertedCertificates = convertBigIntToString(certificates);
-      const courseCert = convertedCertificates.find(
-        (cert: Certificate) => cert.courseId === Number(courseIdNum)
-      );
-
-      if (courseCert) {
-        setUserCertificate(courseCert);
-        setCurrentView('certificate');
-        console.log(
-          '🎓 Certificate found for user:',
-          currentUserId.slice(0, 20) + '...',
-          'Token:',
-          courseCert.tokenId
-        );
-        return;
-      }
     } catch (error) {
       console.error(
         '❌ Error restoring progress for user:',
@@ -874,12 +1166,13 @@ export default function LearningPage() {
     }
   };
 
-  // Handle enrollment - USER-SPECIFIC ENROLLMENT
+  // Handle enrollment - USER-SPECIFIC ENROLLMENT WITH PERSISTENCE
   const handleEnroll = async () => {
     if (!actor || !courseId || !currentUserId) return;
 
     console.log(`🎫 Enrolling user ${currentUserId.slice(0, 20)}... in course ${courseId}`);
     setIsEnrolling(true);
+    startLoading();
 
     try {
       const result = await actor.enrollCourse(BigInt(courseId));
@@ -888,6 +1181,15 @@ export default function LearningPage() {
         toast.success(result.ok);
         setIsEnrolled(true);
         console.log('✅ Enrollment successful for user:', currentUserId.slice(0, 20) + '...');
+
+        // Update persistent state
+        if (persistentUserState) {
+          const updatedState: PersistentUserState = {
+            ...persistentUserState,
+            lastSeen: Date.now(),
+          };
+          userStateManager.saveUserState(updatedState);
+        }
 
         // Reload the page to fetch enrolled content
         window.location.reload();
@@ -902,6 +1204,7 @@ export default function LearningPage() {
       console.error('❌ Enrollment error for user:', currentUserId.slice(0, 20) + '...', err);
     } finally {
       setIsEnrolling(false);
+      stopLoading();
     }
   };
 
@@ -935,6 +1238,7 @@ export default function LearningPage() {
 
     console.log(`🧠 User ${currentUserId.slice(0, 20)}... starting quiz for course ${courseId}`);
     setIsLoadingQuiz(true);
+    startLoading();
 
     try {
       let quizToUse = finalQuizData;
@@ -970,6 +1274,7 @@ export default function LearningPage() {
       console.error('❌ Quiz loading error for user:', currentUserId.slice(0, 20) + '...', error);
     } finally {
       setIsLoadingQuiz(false);
+      stopLoading();
     }
   };
 
@@ -978,6 +1283,7 @@ export default function LearningPage() {
 
     console.log(`📝 User ${currentUserId.slice(0, 20)}... submitting quiz for course ${courseId}`);
     setIsSubmittingQuiz(true);
+    startLoading();
 
     try {
       // Convert answers to the format expected by backend
@@ -1024,6 +1330,15 @@ export default function LearningPage() {
 
                   // Complete course in learning state
                   await learningActions.completeCourse(courseCert.tokenId);
+
+                  // Update persistent state
+                  if (persistentUserState) {
+                    const updatedState: PersistentUserState = {
+                      ...persistentUserState,
+                      lastSeen: Date.now(),
+                    };
+                    userStateManager.saveUserState(updatedState);
+                  }
 
                   toast.success('🎉 Congratulations! Your certificate has been generated!');
                   console.log(
@@ -1114,6 +1429,15 @@ export default function LearningPage() {
             // Complete course in learning state
             await learningActions.completeCourse(certificate.tokenId);
 
+            // Update persistent state
+            if (persistentUserState) {
+              const updatedState: PersistentUserState = {
+                ...persistentUserState,
+                lastSeen: Date.now(),
+              };
+              userStateManager.saveUserState(updatedState);
+            }
+
             toast.success('🎉 Congratulations! Your certificate has been generated!');
             console.log(
               '🎓 Fallback certificate generated for user:',
@@ -1138,29 +1462,30 @@ export default function LearningPage() {
       toast.error('Failed to submit quiz');
     } finally {
       setIsSubmittingQuiz(false);
+      stopLoading();
     }
   };
 
-  // Loading state - ENHANCED WITH USER STATUS
-  if (loading || !actor || learningState.isLoading || !currentUserId || isInitializingUser) {
-    let loadingMessage = 'Loading...';
-
-    if (isInitializingUser) {
-      loadingMessage = 'Initializing Internet Identity...';
-    } else if (!actor) {
-      loadingMessage = 'Connecting to blockchain...';
-    } else if (!currentUserId) {
-      loadingMessage = 'Getting user identity...';
-    } else if (learningState.isLoading) {
-      loadingMessage = 'Loading your progress...';
-    } else {
-      loadingMessage = 'Loading course materials...';
+  // Certificate view handlers
+  const handleViewCertificate = () => {
+    if (userCertificate) {
+      window.open(`/certificate/${userCertificate.tokenId}`, '_blank');
     }
+  };
 
-    return <LoadingSpinner message={loadingMessage} />;
-  }
+  const handleViewMaterials = () => {
+    setCurrentView('learning');
+    learningActions.goToModule(0);
+  };
 
-  // Error state or not enrolled - USER-SPECIFIC MESSAGING
+  const handleChooseNewCourse = () => {
+    window.location.href = '/dashboard';
+  };
+
+  // ====== USER STATE DISPLAY COMPONENT ======
+
+
+  // Error state or not enrolled - USER-SPECIFIC MESSAGING WITH PERSISTENT STATE
   if (error || !isEnrolled) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-transparent p-4">
@@ -1173,12 +1498,20 @@ export default function LearningPage() {
             {error || 'You need to enroll in this course to access the materials'}
           </p>
 
-          {/* User Identity Display */}
-          {currentUserId && (
+          {/* Enhanced User Identity Display with Persistent State */}
+          {persistentUserState && (
             <div className="mb-4 rounded-lg bg-slate-100 p-3">
-              <div className="text-xs text-gray-500">Logged in as</div>
-              <div className="font-mono text-sm text-gray-700">
-                {currentUserId.slice(0, 20)}...{currentUserId.slice(-8)}
+              <div className="text-xs text-gray-500">Current User</div>
+              <div className="text-sm font-medium text-gray-700">
+                {persistentUserState.userName}
+              </div>
+              <div className="font-mono text-xs text-gray-500">
+                ID: {persistentUserState.userId.slice(0, 20)}...
+                {persistentUserState.userId.slice(-8)}
+              </div>
+              <div className="text-xs text-green-600">
+                Session Active • Last seen:{' '}
+                {new Date(persistentUserState.lastSeen).toLocaleTimeString()}
               </div>
             </div>
           )}
@@ -1208,7 +1541,7 @@ export default function LearningPage() {
 
   if (!courseMaterial || !courseInfo) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="flex min-h-screen items-center justify-center bg-transparent p-4">
         <div className="rounded-xl bg-white p-8 text-center shadow-lg">
           <h2 className="mb-4 text-2xl font-bold text-gray-800">Course not found</h2>
           <Link
@@ -1226,160 +1559,151 @@ export default function LearningPage() {
   const allLearningCompleted =
     learningState.completedModules.length === courseMaterial.modules.length;
 
-  // Certificate View - USER-SPECIFIC CERTIFICATE
+  // Certificate View - USER-SPECIFIC CERTIFICATE WITH ENHANCED DESIGN AND PERSISTENCE
   if (currentView === 'certificate' && userCertificate) {
     return (
       <CertificateDisplay
         certificate={userCertificate}
         currentUserId={currentUserId}
-        onViewCertificate={() => {
-          window.open(`/certificate/${userCertificate.tokenId}`, '_blank');
-        }}
-        userName={`User ${currentUserId?.slice(-8)}`}
+        onViewCertificate={handleViewCertificate}
+        onViewMaterials={handleViewMaterials}
+        onChooseNewCourse={handleChooseNewCourse}
+        userName={persistentUserState?.userName || userProfile?.name || 'Distinguished Learner'}
       />
     );
   }
 
-  // Quiz View - USER-SPECIFIC QUIZ
+  // Quiz View - USER-SPECIFIC QUIZ WITH PERSISTENCE
   if (currentView === 'quiz' && currentQuiz) {
     return (
-      <div className="relative min-h-screen">
-        <div className="absolute top-4 left-4 z-50">
-          <button
-            onClick={() => {
-              setCurrentView('learning');
-              setCurrentQuiz(null);
-            }}
-            className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-gray-700 shadow-lg transition-colors hover:bg-gray-50"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm font-medium">Back to Course</span>
-          </button>
-        </div>
+      <>
+        <div className="relative min-h-screen">
+          <div className="absolute top-4 left-4 z-50">
+            <button
+              onClick={() => {
+                setCurrentView('learning');
+                setCurrentQuiz(null);
+              }}
+              className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-gray-700 shadow-lg transition-colors hover:bg-gray-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="text-sm font-medium">Back to Course</span>
+            </button>
+          </div>
 
-        <QuizComponent
-          quiz={currentQuiz}
-          onSubmit={handleQuizSubmit}
-          isSubmitting={isSubmittingQuiz}
-          currentUserId={currentUserId}
-        />
-      </div>
+          <QuizComponent
+            quiz={currentQuiz}
+            onSubmit={handleQuizSubmit}
+            isSubmitting={isSubmittingQuiz}
+            currentUserId={currentUserId}
+          />
+        </div>
+      </>
     );
   }
 
-  // Main Learning Interface - USER-SPECIFIC PROGRESS DISPLAY
+  // Main Learning Interface - ENHANCED HEADER DESIGN WITH PERSISTENT USER STATE
   return (
     <div className="min-h-screen bg-transparent">
-      {/* Fixed Header - ENHANCED WITH USER INFO */}
+      {/* ENHANCED FIXED HEADER WITH PERSISTENT USER INFO */}
       <header
         className={cn(
-          'fixed top-0 left-0 z-50 flex w-full items-center justify-between px-6 py-2 transition-all duration-300 md:px-12',
-          scrolled && 'border-base-content/30 bg-base-200/80 border-b shadow-sm backdrop-blur-md'
+          'fixed top-0 left-0 z-50 w-full transition-all duration-300',
+          scrolled
+            ? 'border-b border-slate-700/30 bg-slate-900/95 shadow-2xl backdrop-blur-xl'
+            : 'bg-transparent'
         )}
       >
-        <div className="py-3 sm:px-12 md:px-24 lg:px-36 xl:px-48 2xl:px-60">
-          <div className="flex items-center justify-between">
-            {/* Left Section */}
-            <div className="flex items-center space-x-2">
-              {/* Back Button */}
+        <div className="px-6 py-4">
+          <div className="mx-auto flex max-w-7xl items-center justify-between">
+            {/* LEFT: Back Button */}
+            <div className="flex items-center">
               <Link
                 to="/dashboard"
-                className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-slate-300 transition-all duration-200"
+                className="group flex items-center gap-2 rounded-lg border border-slate-700/50 bg-slate-800/60 px-4 py-2.5 text-white backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:border-slate-600/50 hover:bg-slate-700/80"
               >
-                <ArrowLeft className="h-4 w-4 transition-transform" />
-                <span>Back</span>
+                <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+                <span className="text-sm font-medium">Dashboard</span>
               </Link>
+            </div>
 
-              {/* Divider */}
-              <div className="h-6 w-px bg-slate-600"></div>
-
-              {/* Course Title */}
-              <div className="min-w-0 flex-1">
-                <h1
-                  className="max-w-md truncate text-sm font-semibold text-white"
-                  title={courseInfo.title}
-                >
-                  {truncateTitle(courseInfo.title, 40)}
-                </h1>
-                <p className="text-xs text-slate-400 capitalize">
-                  by <span className="text-accent font-medium">{courseInfo.instructor}</span>
-                </p>
+            {/* CENTER: Course Info */}
+            <div className="max-w-2xl flex-1 px-8 text-center">
+              <h1
+                className="mb-1 truncate text-xl font-bold text-white md:text-2xl"
+                title={courseInfo.title}
+              >
+                {truncateTitle(courseInfo.title, 50)}
+              </h1>
+              <div className="flex items-center justify-center gap-4 text-sm text-slate-400">
+                <div className="flex items-center gap-2">
+                  <span>by</span>
+                  <span className="font-medium text-blue-400 capitalize">
+                    {courseInfo.instructor}
+                  </span>
+                </div>
+                {persistentUserState && (
+                  <div className="flex items-center gap-2">
+                    -
+                    <span className="font-medium text-green-400 capitalize">
+                      {persistentUserState.userName}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Right Section */}
-            <div className="flex items-center space-x-6">
-              {/* User Identity Display */}
-              <div className="hidden items-center space-x-2 sm:flex">
-                <div className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1">
-                  <span className="text-xs font-medium text-green-400">
-                    <User className="mr-1 inline h-3 w-3" />
-                    {currentUserId?.slice(-8)}
-                  </span>
-                </div>
+            {/* RIGHT: Progress & Stats */}
+            <div className="flex items-center gap-4">
+              {/* Module Info */}
+              <div className="hidden items-center gap-2 rounded-lg border border-slate-700/50 bg-slate-800/60 px-3 py-2 backdrop-blur-sm sm:flex">
+                <BookOpen className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-medium whitespace-nowrap text-white">
+                  {learningState.currentModuleIndex + 1}/{courseMaterial.modules.length}
+                </span>
               </div>
 
-              {/* Module Info with Reading Progress */}
-              <div className="hidden items-center space-x-3 sm:flex">
-                <div className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1">
-                  <span className="text-xs font-medium text-blue-400">
-                    Module {learningState.currentModuleIndex + 1}/{courseMaterial.modules.length}
-                  </span>
-                </div>
-                {/* Reading Progress Indicator */}
+              {/* Reading Progress Bar */}
+              <div className="hidden flex-col items-center gap-1 md:flex">
+                <div className="text-xs font-medium text-slate-400">Reading</div>
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-16 rounded-full bg-slate-700">
+                  <div className="h-1.5 w-16 rounded-full bg-slate-700/80">
                     <div
-                      className="h-full rounded-full bg-green-500 transition-all duration-300"
+                      className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-700 ease-out"
                       style={{ width: `${learningState.readingProgress}%` }}
-                    ></div>
+                    />
                   </div>
-                  <span className="text-xs text-slate-400">
-                    {Math.round(learningState.readingProgress)}% read
+                  <span className="min-w-[2.5rem] text-right text-xs font-bold text-green-400">
+                    {Math.round(learningState.readingProgress)}%
                   </span>
                 </div>
               </div>
 
-              {/* Progress Section */}
-              <div className="flex items-center space-x-3">
-                <div className="text-right">
-                  <div className="text-xs font-medium text-slate-300">Progress</div>
-                  <div className="text-lg font-bold text-white">
-                    {Math.round(learningState.overallProgress)}%
-                  </div>
-                </div>
-                <div className="relative h-12 w-12 transform cursor-pointer transition-all duration-300 hover:scale-110 active:scale-95">
-                  <svg
-                    className="progress-circle h-12 w-12 -rotate-90 transform"
-                    viewBox="0 0 36 36"
-                  >
-                    {/* Background Circle */}
+              {/* Overall Progress Circle */}
+              <div className="flex flex-col items-center gap-1">
+                <div className="text-xs font-medium text-slate-400">Progress</div>
+                <div className="relative">
+                  <svg className="h-12 w-12 -rotate-90 transform" viewBox="0 0 36 36">
                     <path
-                      className="text-slate-700"
+                      className="text-slate-700/60"
                       stroke="currentColor"
-                      strokeWidth="3"
+                      strokeWidth="2.5"
                       fill="transparent"
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     />
-                    {/* Progress Circle with smooth animation */}
                     <path
                       className="text-blue-500 transition-all duration-1000 ease-out"
                       stroke="currentColor"
-                      strokeWidth="3"
+                      strokeWidth="2.5"
                       strokeLinecap="round"
                       fill="transparent"
                       strokeDasharray={`${learningState.overallProgress}, 100`}
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      style={{
-                        strokeDashoffset: 0,
-                        transition: 'stroke-dasharray 1.5s cubic-bezier(0.4, 0, 0.2, 1)',
-                      }}
                     />
                   </svg>
-                  {/* Center Text with animation */}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xs font-bold text-blue-400 transition-all duration-300">
-                      {Math.round(learningState.overallProgress)}
+                    <span className="text-xs font-bold text-blue-400">
+                      {Math.round(learningState.overallProgress)}%
                     </span>
                   </div>
                 </div>
@@ -1390,11 +1714,11 @@ export default function LearningPage() {
       </header>
 
       {/* Main Content */}
-      <div className="py-8 pt-20">
+      <div className="py-8 pt-24">
         <div className="grid gap-8 lg:grid-cols-4">
-          {/* Sidebar - Module List - USER-SPECIFIC PROGRESS */}
+          {/* Sidebar - Module List - USER-SPECIFIC PROGRESS WITH PERSISTENT STATE */}
           <div className="lg:col-span-1">
-            <div className="sticky top-32">
+            <div className="sticky top-36">
               <motion.div
                 transition={MOTION_TRANSITION}
                 initial={{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(10px)' }}
@@ -1406,13 +1730,18 @@ export default function LearningPage() {
                   Course Modules
                 </h3>
 
-                {/* User Progress Summary */}
+                {/* Enhanced User Progress Summary with Persistent State */}
                 <div className="mb-4 rounded-lg bg-slate-800/40 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs text-slate-400">Your Progress</span>
-                    <span className="font-mono text-xs text-green-400">
-                      {currentUserId?.slice(-6)}
-                    </span>
+                    {persistentUserState && (
+                      <div className="flex items-center gap-1">
+                        <div className="h-2 w-2 rounded-full bg-green-400"></div>
+                        <span className="text-xs text-green-400">
+                          {persistentUserState.userName}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="text-sm text-white">
                     {learningState.completedModules.length} of {courseMaterial.modules.length}{' '}
@@ -1422,8 +1751,13 @@ export default function LearningPage() {
                     <div
                       className="h-full rounded-full bg-blue-500 transition-all duration-300"
                       style={{ width: `${learningState.overallProgress}%` }}
-                    ></div>
+                    />
                   </div>
+                  {persistentUserState && (
+                    <div className="mt-2 text-xs text-slate-400">
+                      User ID: {persistentUserState.userId.slice(-8)}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -1522,7 +1856,7 @@ export default function LearningPage() {
                                       isCompleted ? 'bg-green-400' : 'bg-blue-400'
                                     }`}
                                     style={{ width: `${moduleReadingProgress}%` }}
-                                  ></div>
+                                  />
                                 </div>
                               </div>
                             )}
@@ -1560,7 +1894,7 @@ export default function LearningPage() {
                   )}
                 </div>
 
-                {/* Learning Statistics - USER-SPECIFIC */}
+                {/* Enhanced Learning Statistics with Persistent User Context */}
                 {learningState.statistics && (
                   <div className="mt-4 rounded-lg bg-slate-800/40 p-4">
                     <h4 className="mb-3 text-sm font-semibold text-slate-300">
@@ -1587,10 +1921,16 @@ export default function LearningPage() {
                           {Math.round(learningState.statistics.completionRate)}%
                         </span>
                       </div>
-                      <div className="mt-2 flex justify-between border-t border-slate-600/50 pt-2">
-                        <span className="text-slate-400">User ID:</span>
-                        <span className="font-mono text-xs text-green-400">
-                          {currentUserId?.slice(-6)}
+                      {persistentUserState && (
+                        <div className="mt-2 flex justify-between border-t border-slate-600/50 pt-2">
+                          <span className="text-slate-400">Student:</span>
+                          <span className="text-green-400">{persistentUserState.userName}</span>
+                        </div>
+                      )}
+                      <div className="mt-1 flex justify-between">
+                        <span className="text-slate-400">Session:</span>
+                        <span className="text-blue-400">
+                          Active • {persistentUserState?.userId.slice(-6)}
                         </span>
                       </div>
                     </div>
@@ -1600,10 +1940,10 @@ export default function LearningPage() {
             </div>
           </div>
 
-          {/* Main Content - USER-SPECIFIC LEARNING EXPERIENCE */}
+          {/* Main Content - USER-SPECIFIC LEARNING EXPERIENCE WITH PERSISTENT STATE */}
           <div className="lg:col-span-3">
             <div className="space-y-8">
-              {/* Module Header - ENHANCED WITH USER CONTEXT */}
+              {/* Module Header - ENHANCED WITH PERSISTENT USER CONTEXT */}
               {currentModule && (
                 <motion.div
                   className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
@@ -1643,7 +1983,7 @@ export default function LearningPage() {
                     {currentModule.title}
                   </h2>
 
-                  {/* Module Status and Actions - USER-SPECIFIC */}
+                  {/* Module Status and Actions - USER-SPECIFIC WITH PERSISTENT STATE */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       {learningState.completedModules.includes(currentModule.moduleId) ? (
@@ -1663,7 +2003,7 @@ export default function LearningPage() {
                           <div
                             className="h-full rounded-full bg-blue-400 transition-all duration-300"
                             style={{ width: `${learningState.readingProgress}%` }}
-                          ></div>
+                          />
                         </div>
                         <span className="text-xs text-slate-400">
                           {Math.round(learningState.readingProgress)}%
@@ -1671,7 +2011,7 @@ export default function LearningPage() {
                       </div>
                     </div>
 
-                    {/* Module Actions - USER-SPECIFIC */}
+                    {/* Module Actions - USER-SPECIFIC WITH PERSISTENT USER INDICATOR */}
                     <div className="flex items-center gap-2">
                       {/* Bookmark Button */}
                       <button
@@ -1714,18 +2054,20 @@ export default function LearningPage() {
                         <FileText size={16} />
                       </button>
 
-                      {/* User Indicator */}
-                      <div className="rounded-lg bg-green-500/20 px-2 py-1">
-                        <span className="font-mono text-xs text-green-400">
-                          {currentUserId?.slice(-4)}
-                        </span>
-                      </div>
+                      {/* Persistent User Indicator */}
+                      {persistentUserState && (
+                        <div className="rounded-lg border border-green-500/30 bg-green-500/20 px-2 py-1">
+                          <span className="text-xs text-green-400">
+                            {persistentUserState.userName}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>
               )}
 
-              {/* Content - USER-SPECIFIC READING TRACKING */}
+              {/* Content - USER-SPECIFIC READING TRACKING WITH PERSISTENT STATE */}
               {currentModule && (
                 <motion.div
                   className="rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow backdrop-blur-sm"
@@ -1737,9 +2079,11 @@ export default function LearningPage() {
                   <h3 className="mb-6 flex items-center gap-2 text-xl font-bold text-white">
                     <FileText className="h-5 w-5 text-blue-400" />
                     Learning Material
-                    <span className="ml-auto text-sm font-normal text-slate-400">
-                      User: {currentUserId?.slice(-6)}
-                    </span>
+                    {persistentUserState && (
+                      <span className="ml-auto text-sm font-normal text-slate-400">
+                        Student: {persistentUserState.userName}
+                      </span>
+                    )}
                   </h3>
 
                   <div className="rounded-lg border border-slate-600/50 bg-slate-900/50 p-6">
@@ -1748,15 +2092,17 @@ export default function LearningPage() {
                       onProgressUpdate={updateReadingProgress}
                     />
 
-                    {/* Show saved note if exists - USER-SPECIFIC */}
+                    {/* Show saved note if exists - USER-SPECIFIC WITH PERSISTENT STATE */}
                     {learningState.moduleNotes[currentModule.moduleId] && (
                       <div className="mt-6 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
                         <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-400">
                           <FileText size={14} />
                           Your Personal Note
-                          <span className="ml-auto font-mono text-xs text-blue-300">
-                            {currentUserId?.slice(-4)}
-                          </span>
+                          {persistentUserState && (
+                            <span className="ml-auto text-xs text-blue-300">
+                              by {persistentUserState.userName}
+                            </span>
+                          )}
                         </h4>
                         <p className="text-sm text-blue-100">
                           {learningState.moduleNotes[currentModule.moduleId]}
@@ -1780,9 +2126,11 @@ export default function LearningPage() {
                         <div className="flex items-center gap-2 text-green-400">
                           <CheckCircle size={20} />
                           <span className="font-medium">Module completed by you</span>
-                          <span className="ml-2 font-mono text-xs text-green-300">
-                            ({currentUserId?.slice(-6)})
-                          </span>
+                          {persistentUserState && (
+                            <span className="ml-2 text-xs text-green-300">
+                              ({persistentUserState.userName})
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1807,7 +2155,7 @@ export default function LearningPage() {
                 </motion.div>
               )}
 
-              {/* Navigation - USER-SPECIFIC PROGRESS CONSTRAINTS */}
+              {/* Navigation - USER-SPECIFIC PROGRESS CONSTRAINTS WITH PERSISTENT STATE */}
               <motion.div
                 className="flex items-center justify-between rounded-2xl border border-slate-700/50 bg-slate-800/60 p-6 shadow-xl backdrop-blur-sm"
                 transition={MOTION_TRANSITION}
@@ -1832,9 +2180,11 @@ export default function LearningPage() {
                 <span className="text-center text-gray-400">
                   <div className="flex items-center gap-2">
                     Module {learningState.currentModuleIndex + 1} of {courseMaterial.modules.length}
-                    <span className="font-mono text-xs text-green-400">
-                      ({currentUserId?.slice(-4)})
-                    </span>
+                    {persistentUserState && (
+                      <span className="text-xs text-green-400">
+                        ({persistentUserState.userName})
+                      </span>
+                    )}
                   </div>
                   {learningState.currentModuleIndex < courseMaterial.modules.length - 1 &&
                     currentModule &&
@@ -1890,7 +2240,7 @@ export default function LearningPage() {
                 </div>
               </motion.div>
 
-              {/* Final Quiz Section - USER-SPECIFIC ASSESSMENT */}
+              {/* Final Quiz Section - USER-SPECIFIC ASSESSMENT WITH PERSISTENT STATE */}
               {allLearningCompleted && !userCertificate && (
                 <motion.div
                   className="border-primary/30 from-primary/10 via-primary/5 relative mt-6 overflow-hidden rounded-2xl border bg-gradient-to-br to-transparent shadow-2xl backdrop-blur-sm"
@@ -1901,16 +2251,16 @@ export default function LearningPage() {
                 >
                   {/* Animated Background Elements */}
                   <div className="absolute inset-0 opacity-10">
-                    <div className="bg-primary/30 absolute top-4 right-4 h-20 w-20 rounded-full blur-xl"></div>
-                    <div className="bg-primary/20 absolute bottom-4 left-4 h-16 w-16 rounded-full blur-lg"></div>
-                    <div className="bg-primary/10 absolute top-1/2 left-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl"></div>
+                    <div className="bg-primary/30 absolute top-4 right-4 h-20 w-20 rounded-full blur-xl" />
+                    <div className="bg-primary/20 absolute bottom-4 left-4 h-16 w-16 rounded-full blur-lg" />
+                    <div className="bg-primary/10 absolute top-1/2 left-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl" />
                   </div>
 
                   <div className="relative p-8">
                     <div className="text-center">
                       {/* Icon Container with Animation */}
                       <div className="relative mx-auto mb-6">
-                        <div className="bg-primary/20 absolute inset-0 animate-pulse rounded-full blur-xl"></div>
+                        <div className="bg-primary/20 absolute inset-0 animate-pulse rounded-full blur-xl" />
                         <div className="from-primary to-primary/80 relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br shadow-lg">
                           <Brain className="h-10 w-10 text-white" />
                         </div>
@@ -1922,16 +2272,15 @@ export default function LearningPage() {
                       </h3>
 
                       <p className="mb-8 text-lg leading-relaxed text-gray-300">
-                        Excellent work,{' '}
-                        <span className="font-mono text-green-400">{currentUserId?.slice(-6)}</span>
-                        ! You've mastered all learning modules.
+                        Excellent work{persistentUserState && `, ${persistentUserState.userName}`}!
+                        You've mastered all learning modules.
                         <br />
                         <span className="font-semibold text-white">
                           Take the comprehensive final quiz to earn your NFT certificate.
                         </span>
                       </p>
 
-                      {/* User Achievement Summary */}
+                      {/* Enhanced User Achievement Summary with Persistent State */}
                       <div className="mb-8 rounded-xl bg-slate-800/60 p-4">
                         <h4 className="mb-3 font-bold text-white">Your Achievement Summary</h4>
                         <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
@@ -1960,6 +2309,14 @@ export default function LearningPage() {
                             <div className="text-gray-400">Notes</div>
                           </div>
                         </div>
+                        {persistentUserState && (
+                          <div className="mt-4 flex items-center justify-center gap-2 border-t border-slate-600/50 pt-3">
+                            <div className="h-2 w-2 rounded-full bg-green-400"></div>
+                            <span className="text-sm text-green-400">
+                              Completed by {persistentUserState.userName} • Session Active
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Quiz Features Grid */}
@@ -2018,14 +2375,14 @@ export default function LearningPage() {
                           </div>
                           <div className="text-gray-400">Questions</div>
                         </div>
-                        <div className="h-8 w-px bg-gray-600"></div>
+                        <div className="h-8 w-px bg-gray-600" />
                         <div className="text-center">
                           <div className="text-primary text-2xl font-bold">
                             {finalQuizData?.passingScore || 75}%
                           </div>
                           <div className="text-gray-400">To Pass</div>
                         </div>
-                        <div className="h-8 w-px bg-gray-600"></div>
+                        <div className="h-8 w-px bg-gray-600" />
                         <div className="text-center">
                           <div className="text-primary text-2xl font-bold">
                             {finalQuizData?.timeLimit
@@ -2044,7 +2401,7 @@ export default function LearningPage() {
                           className="group from-primary to-primary/80 relative overflow-hidden rounded-xl bg-gradient-to-r px-12 py-4 text-lg font-bold text-white shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {/* Button Background Animation */}
-                          <div className="from-primary/80 to-primary absolute inset-0 bg-gradient-to-r opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                          <div className="from-primary/80 to-primary absolute inset-0 bg-gradient-to-r opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
                           <div className="relative flex items-center gap-3">
                             {isLoadingQuiz ? (
@@ -2063,23 +2420,29 @@ export default function LearningPage() {
                         </button>
                       </div>
 
-                      {/* User ID & Motivation Text */}
+                      {/* User ID & Motivation Text with Persistent State */}
                       <div className="mt-6 text-sm text-gray-400">
                         <p className="mb-2">
                           💡 <span className="font-medium text-gray-300">Pro tip:</span> Review your
                           learning materials before starting.
                         </p>
-                        <p className="font-mono text-xs text-green-400">
-                          You've got this, {currentUserId?.slice(-8)}! Show off everything you've
-                          learned.
-                        </p>
+                        {persistentUserState && (
+                          <p className="text-xs text-green-400">
+                            You've got this, {persistentUserState.userName}! Show off everything
+                            you've learned.
+                            <br />
+                            <span className="text-slate-500">
+                              Session ID: {persistentUserState.userId.slice(-8)}
+                            </span>
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
                 </motion.div>
               )}
 
-              {/* Learning Progress Info - USER-SPECIFIC STATUS */}
+              {/* Learning Progress Info - USER-SPECIFIC STATUS WITH PERSISTENT STATE */}
               {!allLearningCompleted && (
                 <motion.div
                   className="border-primary/30 mt-6 rounded-2xl border-2 bg-slate-800/60 p-6 backdrop-blur-sm"
@@ -2099,18 +2462,29 @@ export default function LearningPage() {
                         earn your NFT certificate.
                       </p>
 
-                      {/* User-specific progress indication */}
+                      {/* Enhanced user-specific progress indication with persistent state */}
                       <div className="mb-4 rounded-lg bg-slate-700/50 p-3">
                         <div className="mb-2 flex items-center justify-between">
                           <span className="text-sm text-gray-300">Your Progress</span>
-                          <span className="font-mono text-xs text-green-400">
-                            {currentUserId?.slice(-6)}
-                          </span>
+                          {persistentUserState && (
+                            <div className="flex items-center gap-1">
+                              <div className="h-1.5 w-1.5 rounded-full bg-green-400"></div>
+                              <span className="text-xs text-green-400">
+                                {persistentUserState.userName}
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <div className="text-white">
                           {learningState.completedModules.length} of {courseMaterial.modules.length}{' '}
                           modules completed
                         </div>
+                        {persistentUserState && (
+                          <div className="mt-1 text-xs text-slate-400">
+                            Session: {persistentUserState.userId.slice(-8)} • Active since{' '}
+                            {new Date(persistentUserState.lastSeen).toLocaleTimeString()}
+                          </div>
+                        )}
                       </div>
 
                       {/* Progress Bar */}
@@ -2126,14 +2500,15 @@ export default function LearningPage() {
                           <div
                             className="from-primary to-primary/80 h-full bg-gradient-to-r transition-all duration-300"
                             style={{ width: `${learningState.overallProgress}%` }}
-                          ></div>
+                          />
                         </div>
                       </div>
 
                       <div className="text-sm text-gray-400">
                         <p className="mb-2 flex items-center gap-2">
                           <BookOpen size={14} className="text-primary" />
-                          Module Completion Checklist (for {currentUserId?.slice(-6)}):
+                          Module Completion Checklist
+                          {persistentUserState && ` for ${persistentUserState.userName}`}:
                         </p>
                         <ul className="ml-6 space-y-1">
                           {courseMaterial.modules.map((module, index) => (
@@ -2141,7 +2516,7 @@ export default function LearningPage() {
                               {learningState.completedModules.includes(module.moduleId) ? (
                                 <CheckCircle size={14} className="text-green-400" />
                               ) : (
-                                <div className="border-primary/50 h-3.5 w-3.5 rounded-full border-2"></div>
+                                <div className="border-primary/50 h-3.5 w-3.5 rounded-full border-2" />
                               )}
                               <span
                                 className={
@@ -2161,7 +2536,7 @@ export default function LearningPage() {
                 </motion.div>
               )}
 
-              {/* Certificate Achievement Banner - USER-SPECIFIC CERTIFICATE */}
+              {/* Certificate Achievement Banner - USER-SPECIFIC CERTIFICATE WITH PERSISTENT STATE */}
               {userCertificate && (
                 <motion.div
                   className="mt-6 animate-pulse rounded-2xl border-2 border-yellow-400/50 bg-gradient-to-r from-slate-800/80 to-slate-700/80 p-8 text-center shadow-xl backdrop-blur-sm"
@@ -2173,11 +2548,12 @@ export default function LearningPage() {
                   <Trophy className="mx-auto mb-4 h-16 w-16 text-yellow-400" />
                   <h3 className="mb-2 text-3xl font-bold text-yellow-400">Course Completed! 🎉</h3>
                   <p className="mb-2 text-lg text-gray-200">
-                    Congratulations! You have successfully earned your NFT certificate!
+                    Congratulations{persistentUserState && `, ${persistentUserState.userName}`}! You
+                    have successfully earned your NFT certificate!
                   </p>
-                  <p className="mb-6 font-mono text-sm text-gray-400">
-                    Certificate issued to: {currentUserId?.slice(0, 20)}...
-                    {currentUserId?.slice(-8)}
+                  <p className="mb-6 text-sm text-gray-400">
+                    Certificate issued to:{' '}
+                    {persistentUserState?.userName || 'Distinguished Learner'}
                   </p>
                   <div className="flex items-center justify-center gap-4">
                     <button
@@ -2198,7 +2574,7 @@ export default function LearningPage() {
                     </button>
                   </div>
 
-                  {/* Certificate Details */}
+                  {/* Enhanced Certificate Details with Persistent State */}
                   <div className="mt-6 rounded-lg bg-slate-800/60 p-4">
                     <h4 className="mb-3 text-sm font-semibold text-yellow-300">
                       Certificate Details
@@ -2219,17 +2595,25 @@ export default function LearningPage() {
                         <div className="truncate text-yellow-400">{userCertificate.courseName}</div>
                       </div>
                       <div>
-                        <span className="text-gray-400">User ID:</span>
-                        <div className="font-mono text-yellow-400">
-                          {currentUserId?.slice(-8)}...
+                        <span className="text-gray-400">Student:</span>
+                        <div className="text-yellow-400">
+                          {persistentUserState?.userName || 'Distinguished Learner'}
                         </div>
                       </div>
+                      {persistentUserState && (
+                        <div className="col-span-2">
+                          <span className="text-gray-400">Session ID:</span>
+                          <div className="font-mono text-xs text-yellow-400">
+                            {persistentUserState.userId.slice(-12)}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>
               )}
 
-              {/* Debug Information (Development Only) */}
+              {/* Enhanced Debug Information with Persistent State (Development Only) */}
               {process.env.NODE_ENV === 'development' && (
                 <motion.div
                   className="mt-6 rounded-lg border border-gray-600/50 bg-gray-800/30 p-4 font-mono text-xs"
@@ -2240,7 +2624,17 @@ export default function LearningPage() {
                 >
                   <h4 className="mb-2 text-gray-400">Debug Information (Dev Only)</h4>
                   <div className="space-y-1 text-gray-500">
-                    <div>User ID: {currentUserId}</div>
+                    <div>Current User ID: {currentUserId}</div>
+                    <div>Persistent User ID: {persistentUserState?.userId}</div>
+                    <div>User Name: {persistentUserState?.userName || 'N/A'}</div>
+                    <div>Principal: {persistentUserState?.principal}</div>
+                    <div>Session Active: {userStateManager.isSessionActive().toString()}</div>
+                    <div>
+                      Last Seen:{' '}
+                      {persistentUserState
+                        ? new Date(persistentUserState.lastSeen).toLocaleString()
+                        : 'N/A'}
+                    </div>
                     <div>Course ID: {courseId}</div>
                     <div>Current Module: {learningState.currentModuleIndex + 1}</div>
                     <div>Completed Modules: {learningState.completedModules.length}</div>
@@ -2252,6 +2646,7 @@ export default function LearningPage() {
                     <div>Notes: {Object.keys(learningState.moduleNotes).length}</div>
                     <div>Is Enrolled: {isEnrolled.toString()}</div>
                     <div>Has Certificate: {!!userCertificate}</div>
+                    <div>Is Initializing: {isInitializingUser.toString()}</div>
                   </div>
                 </motion.div>
               )}

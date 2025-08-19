@@ -549,16 +549,6 @@ export const useLearningProgress = (
           `✅ Module ${state.currentModule.moduleId} completed by user: ${currentUserId.slice(0, 20)}...`
         );
 
-        // Auto-advance to next module after delay
-        if (state.currentModuleIndex < (courseMaterial?.modules?.length || 0) - 1) {
-          setTimeout(() => {
-            toast.info('Advancing to next module...', {
-              description: 'You can always go back to review completed modules',
-            });
-            goToNextModule();
-          }, 2000);
-        }
-
         // Check if all modules completed
         const totalModules = courseMaterial?.modules?.length || 0;
         const completedCount = state.completedModules.length + 1; // +1 for current module
