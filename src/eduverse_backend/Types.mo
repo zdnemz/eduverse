@@ -52,10 +52,9 @@ module {
     explanation: Text; // Penjelasan jawaban yang benar
   };
 
-  // Type untuk quiz
+  // Type untuk quiz (UPDATED: removed moduleId)
   public type CourseQuiz = {
     courseId: Nat;
-    moduleId: Nat;
     title: Text;
     questions: [QuizQuestion];
     passingScore: Nat; // Passing score dalam persentase (0-100)
@@ -68,15 +67,16 @@ module {
     selectedAnswer: Nat;
   };
 
+  // Type untuk preview quiz question
   public type QuizQuestionPreview = {
     questionId: Nat;
     question: Text;
     options: [Text];
   };
 
+  // Type untuk preview quiz (UPDATED: removed moduleId)
   public type QuizPreview = {
     courseId: Nat;
-    moduleId: Nat;
     title: Text;
     questions: [QuizQuestionPreview];
     passingScore: Nat;
@@ -84,6 +84,7 @@ module {
     totalQuestions: Nat;
   };
 
+  // Type untuk detailed quiz scoring
   public type DetailedQuizScore = {
     totalQuestions: Nat;
     correctAnswers: Nat;
@@ -92,23 +93,23 @@ module {
     passed: Bool;
   };
 
-  // Type untuk hasil quiz
+  // Type untuk hasil quiz (UPDATED: removed moduleId)
   public type QuizResult = {
     userId: Principal;
     courseId: Nat;
-    moduleId: Nat;
     score: Nat; // Score dalam persentase
     passed: Bool;
     completedAt: Int; // Timestamp
     answers: [UserAnswer];
+    timeSpent: ?Nat; // Time spent in seconds (optional)
   };
 
-  // Type untuk progress user
+  // Type untuk progress user (UPDATED: simplified without moduleId references)
   public type UserProgress = {
     userId: Principal;
     courseId: Nat;
     completedModules: [Nat]; // Array of completed module IDs
-    quizResults: [QuizResult];
+    quizResult: ?QuizResult; // Single quiz result per course
     overallProgress: Nat; // Progress dalam persentase
     lastAccessed: Int; // Timestamp
   };
@@ -120,6 +121,7 @@ module {
     courseId: Nat;
     courseName: Text;
     completedAt: Int; // Timestamp
+    finalScore: Nat; // Final quiz score
     issuer: Text; // Nama platform/institusi
     certificateHash: Text; // Hash untuk verifikasi
     metadata: CertificateMetadata;
@@ -165,17 +167,22 @@ module {
     completionRate: Float; // Persentase completion rate
     averageScore: Float;
     averageTimeToComplete: Nat; // Dalam hari
+    totalQuizAttempts: Nat;
+    averageQuizScore: Float;
   };
 
-  // Type untuk user profile
+  // Type untuk user profile (UPDATED: enhanced with quiz statistics)
   public type UserProfile = {
     userId: Principal;
     username: ?Text;
     email: ?Text;
     joinedAt: Int;
     totalCoursesCompleted: Nat;
+    totalQuizzesPassed: Nat;
+    averageQuizScore: Float;
     certificates: [Nat]; // Array of certificate token IDs
     achievements: [Text];
+    learningStreak: Nat; // Days of consecutive learning
   };
 
   // Type untuk learning path
@@ -187,5 +194,45 @@ module {
     difficulty: Difficulty;
     estimatedDuration: Text;
     prerequisites: [Text];
+  };
+
+  // Type untuk quiz attempt (NEW: untuk tracking quiz attempts)
+  public type QuizAttempt = {
+    attemptId: Nat;
+    userId: Principal;
+    courseId: Nat;
+    startedAt: Int;
+    completedAt: ?Int;
+    score: ?Nat;
+    passed: ?Bool;
+    answers: [UserAnswer];
+    timeSpent: ?Nat; // dalam detik
+  };
+
+  // Type untuk leaderboard (NEW)
+  public type LeaderboardEntry = {
+    rank: Nat;
+    userId: Principal;
+    username: ?Text;
+    totalScore: Nat;
+    coursesCompleted: Nat;
+    averageScore: Float;
+  };
+
+  // Type untuk achievement (NEW)
+  public type Achievement = {
+    id: Text;
+    title: Text;
+    description: Text;
+    icon: Text;
+    criteria: AchievementCriteria;
+  };
+
+  public type AchievementCriteria = {
+    #CoursesCompleted: Nat;
+    #QuizzesPassed: Nat;
+    #AverageScore: Nat;
+    #LearningStreak: Nat;
+    #PerfectScore: Nat; // Number of perfect quiz scores
   };
 };

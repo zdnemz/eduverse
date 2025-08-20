@@ -132,13 +132,13 @@ persistent actor EduverseBackend {
           };
         };
         
-        // Initialize user progress
+        // Initialize user progress - FIXED: Removed quizResults field, kept only quizResult
         let progressKey = getUserProgressKey(caller, courseId);
         let initialProgress: Types.UserProgress = {
           userId = caller;
           courseId = courseId;
           completedModules = [];
-          quizResults = [];
+          quizResult = null; // Single quiz result per course
           overallProgress = 0;
           lastAccessed = Time.now();
         };
@@ -216,7 +216,7 @@ persistent actor EduverseBackend {
               };
               
               // Get the quiz
-              switch (Quizzes.getQuizByModuleId(courseId, moduleId)) {
+              switch (Quizzes.getQuizByCourseId(courseId)) {
                 case null { #err("Quiz not available for this module") };
                 case (?quiz) { #ok(quiz) };
               }
@@ -235,7 +235,7 @@ persistent actor EduverseBackend {
       return #err("You must enroll in this course first");
     };
     
-    switch (Quizzes.getQuizByModuleId(courseId, moduleId)) {
+    switch (Quizzes.getQuizByCourseId(courseId)) {
       case null { #err("Quiz not found") };
       case (?quiz) {
         // Extract correct answers
@@ -253,14 +253,15 @@ persistent actor EduverseBackend {
         let score = Quizzes.calculateScore(userAnswerValues, correctAnswers);
         let passed = Quizzes.hasPassedQuiz(score, quiz.passingScore);
         
+        // FIXED: Added missing timeSpent field and removed moduleId
         let result: Types.QuizResult = {
           userId = caller;
           courseId = courseId;
-          moduleId = moduleId;
           score = score;
           passed = passed;
           completedAt = Time.now();
           answers = answers;
+          timeSpent = null; // Optional field for time tracking
         };
         
         // Store quiz result
@@ -269,10 +270,9 @@ persistent actor EduverseBackend {
           case null {
             quizResults.put(resultKey, [result]);
           };
-          case (?existing) {
-            // Replace existing result for same module or add new
-            let filtered = Array.filter<Types.QuizResult>(existing, func(r) = r.moduleId != moduleId);
-            quizResults.put(resultKey, Array.append(filtered, [result]));
+          case (?_existing) {
+            // Replace existing result for same course (since we removed moduleId)
+            quizResults.put(resultKey, [result]);
           };
         };
         
@@ -298,6 +298,7 @@ persistent actor EduverseBackend {
               let updatedProgress = {
                 progress with 
                 completedModules = newCompletedModules;
+                quizResult = ?result; // Store the quiz result in progress
                 overallProgress = newProgress;
                 lastAccessed = Time.now();
               };
@@ -316,22 +317,18 @@ persistent actor EduverseBackend {
     }
   };
 
-  // FIXED: Get all quizzes for a course - Tambahkan 'query' dan 'async'
-  public query func getQuizzesByCourseId(courseId: Nat): async [Types.CourseQuiz] {
-    Quizzes.getQuizzesByCourseId(courseId) // Panggil dari Quizzes module
+  public query func getAllQuizzes(): async [Types.CourseQuiz] {
+    Quizzes.getAllQuizzes()
   };
 
-  // FIXED: Get quiz preview - Tambahkan 'query' dan 'async' 
-  public query func getQuizPreview(courseId: Nat, moduleId: Nat): async ?Types.QuizPreview {
-    Quizzes.getQuizPreview(courseId, moduleId) // Panggil dari Quizzes module
+  public query func getQuizPreview(courseId: Nat): async ?Types.QuizPreview {
+    Quizzes.getQuizPreview(courseId)
   };
 
-  // FIXED: Validate quiz answers - Tambahkan 'query' dan 'async'
   public query func validateAnswers(answers: [Types.UserAnswer], quizQuestions: [Types.QuizQuestion]): async Result.Result<Bool, Text> {
-    Quizzes.validateAnswers(answers, quizQuestions) // Panggil dari Quizzes module
+    Quizzes.validateAnswers(answers, quizQuestions)
   };
   
-  // FIXED: Usage example with better error handling - sudah benar dengan 'shared' dan 'async'
   public shared({ caller }) func getQuizWithValidation(courseId: Nat, moduleId: Nat): async Result.Result<Types.QuizPreview, Text> {
     // Comprehensive validation
     if (not isEnrolled(caller, courseId)) {
@@ -345,19 +342,20 @@ persistent actor EduverseBackend {
       case (?progress) {
         // Check if previous modules are completed (assuming sequential order)
         if (moduleId > 1) {
+          // FIXED: Safe subtraction check
           let prevModule = Nat.sub(moduleId, 1);
           let prevModuleCompleted = Array.find<Nat>(
             progress.completedModules,
             func(m) = m == prevModule
           );
-          if (prevModuleCompleted == null) {
+          if (prevModuleCompleted == null and prevModule > 0) {
             return #err("PREREQUISITE_NOT_COMPLETED");
           };
         };
       };
     };
 
-    switch (Quizzes.getQuizPreview(courseId, moduleId)) {
+    switch (Quizzes.getQuizPreview(courseId)) {
       case null { #err("QUIZ_NOT_FOUND") };
       case (?preview) { #ok(preview) };
     }
@@ -382,12 +380,28 @@ persistent actor EduverseBackend {
     switch (Array.find<Types.CourseInfo>(Courses.courses, func(c) = c.id == courseId)) {
       case null { #err("Course not found") };
       case (?course) {
+        // Calculate final score from quiz results
+        let progressKey = getUserProgressKey(userId, courseId);
+        let finalScore = switch (quizResults.get(progressKey)) {
+          case null { 0 };
+          case (?results) {
+            if (results.size() == 0) { 0 }
+            else {
+              let totalScore = Array.foldLeft<Types.QuizResult, Nat>(
+                results, 0, func(acc, result) = acc + result.score
+              );
+              totalScore / results.size()
+            }
+          };
+        };
+
         let certificate: Types.Certificate = {
           tokenId = nextCertificateId;
           userId = userId;
           courseId = courseId;
           courseName = course.title;
           completedAt = Time.now();
+          finalScore = finalScore;
           issuer = "Eduverse Academy";
           certificateHash = "cert_" # Nat.toText(nextCertificateId) # "_" # Principal.toText(userId);
           metadata = {
@@ -403,7 +417,7 @@ persistent actor EduverseBackend {
                 case (#Advanced) { "Advanced" };
               }},
               { trait_type = "Category"; value = course.category },
-              { trait_type = "Completion Date"; value = Int.toText(Time.now() / 1000000000) } // Convert to seconds
+              { trait_type = "Completion Date"; value = Int.toText(Time.now() / 1000000000) }
             ];
           };
         };
@@ -443,20 +457,35 @@ persistent actor EduverseBackend {
     let completionRate = if (totalEnrollments > 0) {
       (Float.fromInt(completed.size()) / Float.fromInt(totalEnrollments)) * 100.0
     } else { 0.0 };
+
+    // Calculate average quiz score from all quiz results
+    let allQuizResults = Iter.toArray(quizResults.vals()) 
+      |> Array.map<[Types.QuizResult], [Types.QuizResult]>(_, func(x) = x)
+      |> Array.flatten<Types.QuizResult>(_);
+    let courseQuizResults = Array.filter<Types.QuizResult>(allQuizResults, func(r) = r.courseId == courseId);
     
+    let averageQuizScore = if (courseQuizResults.size() > 0) {
+      let totalScore = Array.foldLeft<Types.QuizResult, Nat>(
+        courseQuizResults, 0, func(acc, result) = acc + result.score
+      );
+      Float.fromInt(totalScore) / Float.fromInt(courseQuizResults.size())
+    } else { 0.0 };
+
     ?{
       courseId = courseId;
       totalEnrollments = totalEnrollments;
       completionRate = completionRate;
-      averageScore = 85.0; // Placeholder - could calculate from actual quiz results
-      averageTimeToComplete = 30; // Placeholder - could calculate from actual data
+      averageScore = 85.0; // Placeholder
+      averageQuizScore = averageQuizScore;
+      totalQuizAttempts = courseQuizResults.size();
+      averageTimeToComplete = 30; // Placeholder
     }
   };
 
   // === UTILITY FUNCTIONS ===
   public query func getCategories(): async [Text] {
     let categories = Array.map<Types.CourseInfo, Text>(Courses.courses, func(course) = course.category);
-    // Remove duplicates (simple approach)
+    // Remove duplicates
     Array.foldLeft<Text, [Text]>(categories, [], func(acc, category) {
       if (Array.find<Text>(acc, func(c) = c == category) == null) {
         Array.append(acc, [category])

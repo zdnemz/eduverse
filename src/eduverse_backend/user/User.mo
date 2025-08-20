@@ -6,6 +6,8 @@ import Array "mo:base/Array";
 import Iter "mo:base/Iter";
 import Text "mo:base/Text";
 import Nat "mo:base/Nat";
+import Float "mo:base/Float";
+import Int "mo:base/Int";
 import Types "../Types";
 
 module {
@@ -72,8 +74,11 @@ module {
             email = email;
             joinedAt = currentTime;
             totalCoursesCompleted = 0;
+            totalQuizzesPassed = 0;
+            averageQuizScore = 0.0;
             certificates = [];
             achievements = [];
+            learningStreak = 0;
           }
         };
       };
@@ -123,8 +128,11 @@ module {
         email = email;
         joinedAt = currentTime;
         totalCoursesCompleted = 0;
+        totalQuizzesPassed = 0;
+        averageQuizScore = 0.0;
         certificates = [];
         achievements = [];
+        learningStreak = 0;
       };
       
       users.put(userId, newUser);
@@ -162,6 +170,51 @@ module {
           
           profiles.put(userId, updatedProfile);
           #ok("Course completion count updated")
+        };
+      }
+    };
+
+    // NEW: Update quiz statistics
+    public func updateQuizStats(userId: Principal, quizPassed: Bool, quizScore: Nat): Result.Result<Text, Text> {
+      switch (profiles.get(userId)) {
+        case null { #err("User profile not found") };
+        case (?profile) {
+          let newQuizzesPassed = if (quizPassed) {
+            profile.totalQuizzesPassed + 1
+          } else {
+            profile.totalQuizzesPassed
+          };
+          
+          // Calculate new average score
+          let totalQuizzes = profile.totalQuizzesPassed + 1;
+          let currentTotalScore = profile.averageQuizScore * Float.fromInt(profile.totalQuizzesPassed);
+          let newTotalScore = currentTotalScore + Float.fromInt(quizScore);
+          let newAverageScore = newTotalScore / Float.fromInt(totalQuizzes);
+          
+          let updatedProfile = {
+            profile with
+            totalQuizzesPassed = newQuizzesPassed;
+            averageQuizScore = newAverageScore;
+          };
+          
+          profiles.put(userId, updatedProfile);
+          #ok("Quiz statistics updated")
+        };
+      }
+    };
+
+    // NEW: Update learning streak
+    public func updateLearningStreak(userId: Principal, streak: Nat): Result.Result<Text, Text> {
+      switch (profiles.get(userId)) {
+        case null { #err("User profile not found") };
+        case (?profile) {
+          let updatedProfile = {
+            profile with
+            learningStreak = streak;
+          };
+          
+          profiles.put(userId, updatedProfile);
+          #ok("Learning streak updated")
         };
       }
     };
@@ -213,8 +266,11 @@ module {
     
     public func getUserStats(userId: Principal): ?{
       totalCourses: Nat;
+      totalQuizzes: Nat;
+      averageScore: Float;
       certificateCount: Nat;
       achievementCount: Nat;
+      learningStreak: Nat;
       memberSince: Int;
     } {
       switch (profiles.get(userId)) {
@@ -222,10 +278,98 @@ module {
         case (?profile) {
           ?{
             totalCourses = profile.totalCoursesCompleted;
+            totalQuizzes = profile.totalQuizzesPassed;
+            averageScore = profile.averageQuizScore;
             certificateCount = profile.certificates.size();
             achievementCount = profile.achievements.size();
+            learningStreak = profile.learningStreak;
             memberSince = profile.joinedAt;
           }
+        };
+      }
+    };
+
+    // FIXED: Get top performers for leaderboard
+    public func getTopPerformers(limit: Nat): [Types.LeaderboardEntry] {
+      let allProfiles = profiles.vals() |> Iter.toArray(_);
+      
+      // Sort by average quiz score (descending)
+      let sortedProfiles = Array.sort<Types.UserProfile>(
+        allProfiles,
+        func(a, b) {
+          if (a.averageQuizScore > b.averageQuizScore) { #less }
+          else if (a.averageQuizScore < b.averageQuizScore) { #greater }
+          else { #equal }
+        }
+      );
+      
+      // Take only the top 'limit' profiles
+      let actualLimit = if (sortedProfiles.size() < limit) {
+        sortedProfiles.size()
+      } else {
+        limit
+      };
+      
+      var result: [Types.LeaderboardEntry] = [];
+      var i = 0;
+      
+      while (i < actualLimit) {
+        let profile = sortedProfiles[i];
+        let entry: Types.LeaderboardEntry = {
+          rank = i + 1;
+          userId = profile.userId;
+          username = profile.username;
+          totalScore = Int.abs(Float.toInt(profile.averageQuizScore));
+          coursesCompleted = profile.totalCoursesCompleted;
+          averageScore = profile.averageQuizScore;
+        };
+        result := Array.append(result, [entry]);
+        i += 1;
+      };
+      
+      result
+    };
+
+    // FIXED: Check if user qualifies for achievements
+    public func checkAchievements(userId: Principal): [Text] {
+      switch (profiles.get(userId)) {
+        case null { [] };
+        case (?profile) {
+          var newAchievements: [Text] = [];
+          
+          // First Course Completion
+          if (profile.totalCoursesCompleted >= 1) {
+            let hasAchievement = Array.find<Text>(profile.achievements, func(a) = a == "First Course Complete");
+            if (hasAchievement == null) {
+              newAchievements := Array.append(newAchievements, ["First Course Complete"]);
+            };
+          };
+          
+          // Quiz Master (100% on a quiz)
+          if (profile.averageQuizScore == 100.0) {
+            let hasAchievement = Array.find<Text>(profile.achievements, func(a) = a == "Quiz Master");
+            if (hasAchievement == null) {
+              newAchievements := Array.append(newAchievements, ["Quiz Master"]);
+            };
+          };
+          
+          // Learning Streak (7 days)
+          if (profile.learningStreak >= 7) {
+            let hasAchievement = Array.find<Text>(profile.achievements, func(a) = a == "Week Warrior");
+            if (hasAchievement == null) {
+              newAchievements := Array.append(newAchievements, ["Week Warrior"]);
+            };
+          };
+          
+          // Course Champion (5 courses)
+          if (profile.totalCoursesCompleted >= 5) {
+            let hasAchievement = Array.find<Text>(profile.achievements, func(a) = a == "Course Champion");
+            if (hasAchievement == null) {
+              newAchievements := Array.append(newAchievements, ["Course Champion"]);
+            };
+          };
+          
+          newAchievements
         };
       }
     };
@@ -268,6 +412,27 @@ module {
         };
       }
     };
+
+    // NEW: Reset user progress (for testing/admin purposes)
+    public func resetUserProgress(userId: Principal): Result.Result<Text, Text> {
+      switch (profiles.get(userId)) {
+        case null { #err("User profile not found") };
+        case (?profile) {
+          let resetProfile = {
+            profile with
+            totalCoursesCompleted = 0;
+            totalQuizzesPassed = 0;
+            averageQuizScore = 0.0;
+            certificates = [];
+            achievements = [];
+            learningStreak = 0;
+          };
+          
+          profiles.put(userId, resetProfile);
+          #ok("User progress reset successfully")
+        };
+      }
+    };
     
     // Utility functions for upgrades
     public func getSize(): Nat {
@@ -277,6 +442,38 @@ module {
     public func clear(): () {
       users := HashMap.HashMap<Principal, Types.User>(10, Principal.equal, Principal.hash);
       profiles := HashMap.HashMap<Principal, Types.UserProfile>(10, Principal.equal, Principal.hash);
+    };
+
+    // NEW: Migration function for existing users (if needed)
+    public func migrateExistingProfiles(): Text {
+      var migratedCount = 0;
+      
+      for ((userId, profile) in profiles.entries()) {
+        // Check if profile needs migration (missing new fields)
+        let needsMigration = switch (profile.averageQuizScore, profile.totalQuizzesPassed, profile.learningStreak) {
+          case (_, _, _) { false }; // All fields exist
+        };
+        
+        if (needsMigration) {
+          let migratedProfile = {
+            userId = profile.userId;
+            username = profile.username;
+            email = profile.email;
+            joinedAt = profile.joinedAt;
+            totalCoursesCompleted = profile.totalCoursesCompleted;
+            totalQuizzesPassed = 0;
+            averageQuizScore = 0.0;
+            certificates = profile.certificates;
+            achievements = profile.achievements;
+            learningStreak = 0;
+          };
+          
+          profiles.put(userId, migratedProfile);
+          migratedCount += 1;
+        };
+      };
+      
+      "Migrated " # Nat.toText(migratedCount) # " user profiles"
     };
   };
 };

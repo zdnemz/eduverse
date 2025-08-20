@@ -1,4 +1,4 @@
-// Refactored LearningPage.tsx - Main component using separated components
+// Fixed LearningPage.tsx - Removed moduleId error and aligned with learningService
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -30,10 +30,18 @@ import {
   useTimeTracking,
   useProgressStatistics,
 } from '@/hooks/useLearningProgress';
-import { LearningService, useLearningService } from '@/services/learningService';
-import { Certificate } from '@/types/certificate';
+import {
+  LearningService,
+  useLearningService,
+  EnhancedCourseQuiz,
+  EnhancedQuizResult,
+} from '@/services/learningService';
+import { Certificate as FrontendCertificate } from '@/types/certificate';
 
-// Types (you can move these to a separate types file)
+// Import backend certificate type with alias to avoid naming conflict
+import { Certificate as BackendCertificate } from 'declarations/eduverse_backend/eduverse_backend.did';
+
+// Types (aligned with learningService)
 interface Module {
   moduleId: number;
   title: string;
@@ -70,31 +78,28 @@ interface UserProgress {
   lastAccessed: number;
 }
 
-interface CourseQuiz {
-  courseId: number;
-  moduleId: number;
-  title: string;
-  questions: any[];
-  passingScore: number;
-  timeLimit: number;
-}
-
+// FIXED: QuizResult interface yang kompatibel dengan CourseSidebar
 interface QuizResult {
-  userId: string;
-  courseId: number;
   moduleId: number;
   score: number;
   passed: boolean;
-  completedAt: number;
-  answers: any[];
+  courseId?: number;
+  userId?: string;
+  completedAt?: number;
+  answers?: any[];
 }
 
-// Helper functions (you can move these to a utils file)
+// Helper functions
 const convertBigIntToString = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj === 'bigint') return Number(obj);
   if (Array.isArray(obj)) return obj.map(convertBigIntToString);
   if (typeof obj === 'object') {
+    // Handle Principal objects specifically
+    if (obj.toString && typeof obj.toString === 'function' && obj._arr) {
+      // This is likely a Principal object
+      return obj.toString();
+    }
     const converted: any = {};
     for (const [key, value] of Object.entries(obj)) {
       converted[key] = convertBigIntToString(value);
@@ -104,19 +109,63 @@ const convertBigIntToString = (obj: any): any => {
   return obj;
 };
 
+// FIXED: Helper function untuk mengkonversi EnhancedQuizResult ke QuizResult dengan handling Principal
+const convertEnhancedQuizResultsToQuizResults = (
+  enhancedResults: EnhancedQuizResult[],
+  fallbackUserId: string
+): QuizResult[] => {
+  return enhancedResults.map((result) => ({
+    moduleId: 1, // Default moduleId karena quiz final
+    score: result.score,
+    passed: result.passed,
+    courseId: result.courseId,
+    userId:
+      typeof result.userId === 'object' && result.userId.toString
+        ? result.userId.toString()
+        : fallbackUserId,
+    completedAt: result.completedAt,
+    answers: result.answers,
+  }));
+};
+
+// FIXED: Certificate type conversion helper matching backend schema
+const convertBackendCertificate = (backendCert: BackendCertificate): FrontendCertificate => {
+  // Convert BigInt values to numbers for frontend use
+  const converted = convertBigIntToString(backendCert);
+
+  return {
+    tokenId: Number(converted.tokenId),
+    userId: converted.userId.toString(), // Principal to string
+    courseId: Number(converted.courseId),
+    courseName: converted.courseName,
+    completedAt: Number(converted.completedAt),
+    issuer: converted.issuer,
+    certificateHash: converted.certificateHash,
+    metadata: {
+      name: converted.metadata?.name || `${converted.courseName} Certificate`,
+      description:
+        converted.metadata?.description ||
+        `Certificate of completion for ${converted.courseName} course`,
+      image: converted.metadata?.image || `/certificates/${converted.tokenId}.png`,
+      attributes: converted.metadata?.attributes || [
+        { trait_type: 'Course', value: converted.courseName },
+        { trait_type: 'Issuer', value: converted.issuer },
+        { trait_type: 'Token ID', value: String(converted.tokenId) },
+        {
+          trait_type: 'Issue Date',
+          value: new Date(Number(converted.completedAt)).toLocaleDateString(),
+        },
+      ],
+    },
+  };
+};
+
 export default function LearningPage() {
-  // Get courseId from URL params
   const { courseId } = useParams<{ courseId: string }>();
-
-  // Use loading hook
   const { startLoading, stopLoading } = useLoading('learning-page');
-
-  // Basic states
   const [currentView, setCurrentView] = useState<'learning' | 'quiz' | 'certificate'>('learning');
   const [scrolled, setScrolled] = useState(false);
   const { scrollYProgress } = useScroll();
-
-  // Backend data states
   const [courseMaterial, setCourseMaterial] = useState<CourseMaterial | null>(null);
   const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
   const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
@@ -127,12 +176,12 @@ export default function LearningPage() {
   // User Profile State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
-  // Quiz and Certificate states
-  const [currentQuiz, setCurrentQuiz] = useState<CourseQuiz | null>(null);
+  // Quiz and Certificate states - FIXED: Using proper QuizResult type
+  const [currentQuiz, setCurrentQuiz] = useState<EnhancedCourseQuiz | null>(null);
   const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
-  const [userCertificate, setUserCertificate] = useState<Certificate | null>(null);
-  const [finalQuizData, setFinalQuizData] = useState<CourseQuiz | null>(null);
+  const [userCertificate, setUserCertificate] = useState<FrontendCertificate | null>(null);
+  const [finalQuizData, setFinalQuizData] = useState<EnhancedCourseQuiz | null>(null);
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
 
   // Enhanced User State Management
@@ -156,29 +205,26 @@ export default function LearningPage() {
     useReadingProgressHook(
       Number(courseId) || 0,
       learningState.currentModule?.moduleId || 0,
-      // PENTING: Hanya set callback jika user sudah siap
       currentUserId && !isInitializingUser && actor && learningState.currentModule
         ? (progress) => {
             learningActions.updateReadingProgress(progress);
           }
         : () => {
-            // Callback kosong jika belum siap - tidak akan menyebabkan error
             console.log('⏳ Reading progress update skipped - user not ready');
           }
     );
 
-  // Time tracking hook - Fixed the boolean condition
+  // Time tracking hook
   const { timeSpent: sessionTimeSpent } = useTimeTracking(
     Number(courseId) || 0,
     learningState.currentModule?.moduleId || 0,
-    // Fixed: Ensure this evaluates to a boolean
     !!(currentView === 'learning' && currentUserId && !isInitializingUser && actor)
   );
 
   // Progress statistics hook
   const { statistics: globalStatistics, refreshStatistics } = useProgressStatistics();
 
-  // User initialization (keeping the same logic but cleaner)
+  // User initialization
   useEffect(() => {
     const initializeUserAndActor = async () => {
       try {
@@ -186,7 +232,6 @@ export default function LearningPage() {
         setIsInitializingUser(true);
         startLoading();
 
-        // First, try to load persistent user state
         const savedState = userStateManager.loadUserState();
         if (savedState && userStateManager.isSessionActive()) {
           console.log('♻️ Restoring user session:', savedState.userId.slice(0, 20) + '...');
@@ -201,12 +246,10 @@ export default function LearningPage() {
           userStateManager.updateLastSeen(savedState.userId);
         }
 
-        // Initialize Internet Identity and Actor
         const authClient = await getAuthClient();
         const identity = authClient.getIdentity();
         const principal = identity.getPrincipal();
 
-        // Create actor with identity
         const newActor = await createActor(identity);
         setActor(newActor);
 
@@ -223,11 +266,9 @@ export default function LearningPage() {
             userName = 'Anonymous User';
           }
         } else {
-          // Authenticated user
           userId = principal.toString();
           console.log('✅ User authenticated with II, Principal:', userId.slice(0, 20) + '...');
 
-          // Fetch user profile
           try {
             const profileResult = await newActor.getMyProfile();
             if (profileResult && profileResult.length > 0) {
@@ -243,7 +284,6 @@ export default function LearningPage() {
 
         setCurrentUserId(userId);
 
-        // Save/update persistent user state
         const newUserState: PersistentUserState = {
           userId,
           userName,
@@ -261,7 +301,6 @@ export default function LearningPage() {
         setError('Failed to initialize connection');
         toast.error('Failed to initialize connection. Please refresh the page.');
 
-        // Create fallback user ID
         const fallbackUserId =
           'fallback-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         setCurrentUserId(fallbackUserId);
@@ -294,7 +333,7 @@ export default function LearningPage() {
     return () => unsubscribe();
   }, [scrollYProgress]);
 
-  // Fetch course data (keeping same logic)
+  // Fetch course data
   useEffect(() => {
     const fetchCourseData = async () => {
       if (!actor || !courseId || !currentUserId || isInitializingUser) {
@@ -312,7 +351,6 @@ export default function LearningPage() {
         const courseIdNum = BigInt(courseId);
         const service = new LearningService(actor);
 
-        // Fetch course info
         const courseResult = await actor.getCourseById(courseIdNum);
         const convertedCourse = convertBigIntToString(courseResult);
 
@@ -324,7 +362,6 @@ export default function LearningPage() {
 
         setCourseInfo(convertedCourse[0]);
 
-        // Check enrollment status
         const enrollments = await actor.getMyEnrollments();
         const convertedEnrollments = convertBigIntToString(enrollments);
         const enrolled = convertedEnrollments.some((e: any) => e.courseId === Number(courseIdNum));
@@ -338,13 +375,14 @@ export default function LearningPage() {
           );
 
           if (courseCert) {
-            setUserCertificate(courseCert);
+            // FIXED: Convert backend certificate to frontend type
+            const convertedCert = convertBackendCertificate(courseCert);
+            setUserCertificate(convertedCert);
             setCurrentView('certificate');
             stopLoading();
             return;
           }
 
-          // Fetch course materials
           const materialsResult = await actor.getCourseMaterials(courseIdNum);
 
           if ('ok' in materialsResult) {
@@ -355,7 +393,6 @@ export default function LearningPage() {
             };
             setCourseMaterial(enhancedMaterials);
 
-            // Restore user progress
             await restoreUserProgress(courseIdNum);
             await loadFinalQuizData(Number(courseIdNum), enhancedMaterials);
           } else {
@@ -374,7 +411,7 @@ export default function LearningPage() {
     fetchCourseData();
   }, [actor, courseId, currentUserId, isInitializingUser, startLoading, stopLoading]);
 
-  // Helper functions (keeping the same logic)
+  // Helper functions
   const restoreUserProgress = async (courseIdNum: bigint) => {
     if (!actor || !currentUserId) return;
 
@@ -385,50 +422,117 @@ export default function LearningPage() {
         setUserProgress(convertedProgress);
       }
 
+      // FIXED: Mengambil quiz results dan mengkonversinya untuk kompatibilitas dengan sidebar
       const quizResultsData = await actor.getMyQuizResults(courseIdNum);
       const convertedQuizResults = convertBigIntToString(quizResultsData);
-      setQuizResults(convertedQuizResults || []);
+
+      // Konversi ke format yang diharapkan oleh CourseSidebar dengan konversi Principal ke string
+      if (convertedQuizResults && Array.isArray(convertedQuizResults)) {
+        const compatibleQuizResults: QuizResult[] = convertedQuizResults.map((result: any) => ({
+          moduleId: result.moduleId || 1, // Default ke module 1 jika tidak ada
+          score: result.score || 0,
+          passed: result.passed || false,
+          courseId: result.courseId,
+          userId: result.userId ? result.userId.toString() : currentUserId, // Konversi Principal ke string
+          completedAt: result.completedAt,
+          answers: result.answers,
+        }));
+        setQuizResults(compatibleQuizResults);
+      } else {
+        setQuizResults([]);
+      }
     } catch (error) {
       console.error('❌ Error restoring progress:', error);
+      setQuizResults([]);
     }
   };
 
   const loadFinalQuizData = async (courseIdNum: number, materials: CourseMaterial) => {
-    if (!learningService) return;
+    if (!learningService) {
+      console.warn('⚠️ Learning service not available');
+      return;
+    }
 
     try {
       setIsLoadingQuiz(true);
+      console.log(`🎯 Loading final quiz for course: ${courseIdNum}`);
+
       const finalQuiz = await learningService.getFinalQuiz(courseIdNum);
 
-      if (finalQuiz) {
+      if (finalQuiz && finalQuiz.questions && finalQuiz.questions.length > 0) {
+        console.log('✅ Final quiz loaded:', finalQuiz.title);
         setFinalQuizData(finalQuiz);
       } else {
-        // Create fallback quiz
-        const fallbackQuiz: CourseQuiz = {
-          courseId: courseIdNum,
-          moduleId: 999,
-          title: 'Final Assessment - ' + (courseInfo?.title || 'Course'),
-          questions: materials.modules.map((module, index) => ({
-            questionId: index + 1,
-            question: `What is the main concept covered in "${module.title}"?`,
-            options: [
-              'Basic understanding of the topic',
-              'Advanced implementation techniques',
-              'Practical applications and examples',
-              'Theoretical foundations',
-            ],
-            correctAnswer: 1,
-            explanation: `This covers the core concepts from the module: ${module.title}`,
-          })),
-          passingScore: 75,
-          timeLimit: 900,
-        };
-        setFinalQuizData(fallbackQuiz);
+        console.log('❌ No final quiz available for this course');
+        setFinalQuizData(null);
       }
     } catch (error) {
       console.error('❌ Error loading final quiz:', error);
+      setFinalQuizData(null);
     } finally {
       setIsLoadingQuiz(false);
+    }
+  };
+
+  // ENHANCED: Function to check and generate certificate after quiz completion
+  const checkAndGenerateCertificate = async () => {
+    if (!actor || !courseId || !currentUserId || !learningService) {
+      console.warn('Missing dependencies for certificate check');
+      return;
+    }
+
+    try {
+      console.log('Checking for certificate eligibility...');
+      startLoading();
+
+      // Use the comprehensive completion check from learning service
+      const completionStatus = await learningService.checkCourseCompletion(Number(courseId));
+
+      console.log('Completion status received:', completionStatus);
+
+      // If certificate already exists, show it
+      if (completionStatus.certificate) {
+        console.log('Certificate already exists:', completionStatus.certificate.tokenId);
+        // FIXED: Convert backend certificate to frontend type
+        const convertedCert = convertBackendCertificate(completionStatus.certificate);
+        setUserCertificate(convertedCert);
+        setCurrentView('certificate');
+        toast.success('Certificate retrieved successfully!');
+        return;
+      }
+
+      // If eligible for certificate, generate it
+      if (completionStatus.canGetCertificate) {
+        console.log('User is eligible for certificate, generating...');
+
+        // FIXED: Use getCertificate method from learningService instead
+        const certificateResult = await learningService.getCertificate(Number(courseId));
+
+        if (certificateResult) {
+          console.log('Certificate generated successfully:', certificateResult.tokenId);
+          // FIXED: Convert backend certificate to frontend type
+          const convertedCert = convertBackendCertificate(certificateResult);
+          setUserCertificate(convertedCert);
+          setCurrentView('certificate');
+          toast.success('Congratulations! Your certificate has been generated!');
+        } else {
+          throw new Error('Failed to generate certificate');
+        }
+      } else {
+        // Provide specific feedback based on completion status
+        if (!completionStatus.hasQuizPassed) {
+          toast.warning('You need to pass the final quiz to earn your certificate');
+        } else if (!completionStatus.isComplete) {
+          toast.warning('Complete all course modules to earn your certificate');
+        } else {
+          toast.warning('Complete all requirements to earn your certificate');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking/generating certificate:', error);
+      toast.error('Failed to generate certificate. Please try again.');
+    } finally {
+      stopLoading();
     }
   };
 
@@ -484,6 +588,7 @@ export default function LearningPage() {
     setCurrentView('learning');
   };
 
+  // FIXED: Simplified quiz start handler
   const handleStartQuiz = async () => {
     if (!actor || !courseId || !courseMaterial || !currentUserId || !learningService) return;
 
@@ -491,15 +596,18 @@ export default function LearningPage() {
     startLoading();
 
     try {
-      setCurrentQuiz({
-        moduleId: 1,
-        courseId: Number(courseId),
-        title: 'Final Assessment',
-        questions: [],
-        passingScore: 75,
-        timeLimit: 15,
-      });
-      setCurrentView('quiz');
+      console.log('🎯 Starting final quiz...');
+
+      // Load the actual final quiz from the service
+      const finalQuiz = await learningService.getFinalQuiz(Number(courseId));
+
+      if (finalQuiz) {
+        setCurrentQuiz(finalQuiz);
+        setCurrentView('quiz');
+        console.log('✅ Quiz loaded and ready');
+      } else {
+        toast.error('No quiz available for this course');
+      }
     } catch (error) {
       console.error('❌ Quiz loading error:', error);
       toast.error('Failed to load quiz. Please try again.');
@@ -509,31 +617,57 @@ export default function LearningPage() {
     }
   };
 
-  const handleQuizSubmit = async (answers: number[]) => {
-    if (!actor || !courseId || !currentQuiz || !currentUserId || !learningService) return;
-
-    setIsSubmittingQuiz(true);
-    startLoading();
+  // UPDATED: Enhanced quiz completion handler dengan konversi tipe yang benar
+  const handleQuizComplete = async (quizResult: any) => {
+    console.log('Quiz completed with result:', quizResult);
 
     try {
-      const formattedAnswers = answers.map((answer, index) => ({
-        questionId: index + 1,
-        selectedAnswer: answer,
-      }));
+      startLoading();
 
-      // Submit quiz logic here (keeping same logic as original)
-      // ... quiz submission code ...
+      // FIXED: Konversi ke format QuizResult yang kompatibel dengan sidebar
+      const compatibleQuizResult: QuizResult = {
+        moduleId: quizResult.moduleId || 1, // Default ke module 1 untuk final quiz
+        score: quizResult.score || 0,
+        passed: quizResult.passed || false,
+        courseId: quizResult.courseId,
+        userId: quizResult.userId ? quizResult.userId.toString() : currentUserId || 'unknown', // Konversi Principal ke string
+        completedAt: quizResult.completedAt,
+        answers: quizResult.answers,
+      };
 
-      setCurrentQuiz(null);
-      setCurrentView('learning');
+      // Update quiz results state dengan format yang benar
+      const newQuizResults = [...quizResults, compatibleQuizResult];
+      setQuizResults(newQuizResults);
+
+      // Check if quiz passed
+      if (quizResult.passed) {
+        console.log('Quiz passed! Checking for certificate...');
+        toast.success('Quiz passed! Checking for certificate...');
+
+        // Clear current quiz first
+        setCurrentQuiz(null);
+
+        // Small delay to ensure backend is updated, then check certificate
+        setTimeout(async () => {
+          await checkAndGenerateCertificate();
+        }, 2000); // Increased delay to ensure backend processing
+      } else {
+        console.log('Quiz failed, score:', quizResult.score);
+        toast.error(`Quiz failed. Score: ${quizResult.score}%. Try again!`);
+        setCurrentView('learning');
+        setCurrentQuiz(null);
+      }
     } catch (error) {
-      console.error('❌ Quiz submission error:', error);
-      toast.error('Failed to submit quiz. Please try again.');
+      console.error('Error handling quiz completion:', error);
+      toast.error('Error processing quiz result');
+      setCurrentView('learning');
+      setCurrentQuiz(null);
     } finally {
-      setIsSubmittingQuiz(false);
       stopLoading();
     }
   };
+
+  // REMOVED: handleQuizSubmit function as it's now handled by QuizComponent
 
   // Computed values
   const currentModule = learningState.currentModule;
@@ -592,16 +726,14 @@ export default function LearningPage() {
     );
   }
 
-  // Quiz View
+  // Quiz View - UPDATED with proper completion handler
   if (currentView === 'quiz' && currentQuiz) {
     return (
       <QuizComponent
         courseId={Number(courseId)}
         learningService={learningService}
         currentUserId={currentUserId}
-        onQuizComplete={(result) => {
-          handleQuizSubmit([]);
-        }}
+        onQuizComplete={handleQuizComplete} // FIXED: Use proper completion handler
         onBack={() => {
           setCurrentView('learning');
           setCurrentQuiz(null);
@@ -739,6 +871,7 @@ export default function LearningPage() {
                     <div>Overall Progress: {Math.round(learningState.overallProgress)}%</div>
                     <div>Has Certificate: {!!userCertificate}</div>
                     <div>Is Enrolled: {isEnrolled.toString()}</div>
+                    <div>Quiz Results: {quizResults.length}</div>
                   </div>
                 </motion.div>
               )}

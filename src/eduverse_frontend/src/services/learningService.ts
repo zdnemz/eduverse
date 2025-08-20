@@ -1,8 +1,11 @@
-// Enhanced LearningService.ts - FIXED QUIZ INTEGRATION WITH MOTOKO BACKEND
+// Enhanced LearningService.ts - FIXED TO MATCH BACKEND FUNCTIONS
 
 import { useState, useEffect, useCallback } from 'react';
 import { ActorSubclass } from '@dfinity/agent';
-import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
+import {
+  _SERVICE,
+  Certificate as BackendCertificate,
+} from 'declarations/eduverse_backend/eduverse_backend.did';
 import type {
   CourseMaterial,
   Module,
@@ -13,7 +16,8 @@ import type {
   CourseQuiz,
   QuizQuestion,
   UserAnswer,
-  Certificate,
+  QuizPreview,
+  CourseStats,
 } from 'declarations/eduverse_backend/eduverse_backend.did';
 
 // Helper to convert BigInt to string recursively
@@ -39,6 +43,14 @@ const convertBigIntToString = (obj: any): any => {
   return obj;
 };
 
+// Course completion status interface
+export interface CourseCompletionStatus {
+  certificate: BackendCertificate | null;
+  canGetCertificate: boolean;
+  hasQuizPassed: boolean;
+  isComplete: boolean;
+}
+
 // Helper to convert number to BigInt
 const toBigInt = (value: number): bigint => {
   return BigInt(value);
@@ -46,9 +58,8 @@ const toBigInt = (value: number): bigint => {
 
 // Frontend interface matching backend types
 export interface EnhancedCourseQuiz
-  extends Omit<CourseQuiz, 'courseId' | 'moduleId' | 'timeLimit' | 'passingScore' | 'questions'> {
+  extends Omit<CourseQuiz, 'courseId' | 'timeLimit' | 'passingScore' | 'questions'> {
   courseId: number;
-  moduleId: number;
   timeLimit: number;
   passingScore: number;
   questions: EnhancedQuizQuestion[];
@@ -59,105 +70,207 @@ export interface EnhancedQuizQuestion extends Omit<QuizQuestion, 'questionId' | 
   correctAnswer: number;
 }
 
-export interface EnhancedQuizResult
-  extends Omit<QuizResult, 'courseId' | 'moduleId' | 'score' | 'completedAt'> {
+export interface EnhancedQuizResult extends Omit<QuizResult, 'courseId' | 'score' | 'completedAt'> {
   courseId: number;
-  moduleId: number;
   score: number;
   completedAt: number;
 }
 
+export interface EnhancedQuizPreview
+  extends Omit<QuizPreview, 'courseId' | 'passingScore' | 'timeLimit' | 'totalQuestions'> {
+  courseId: number;
+  passingScore: number;
+  timeLimit: number;
+  totalQuestions: number;
+}
+
+// Main LearningService Class
 export class LearningService {
-  static getFinalQuiz(courseIdNum: number) {
-    throw new Error('Method not implemented.');
-  }
-  static submitQuiz(
-    arg0: number,
-    moduleId: number,
-    formattedAnswers: { questionId: number; selectedAnswer: number }[]
-  ): any {
-    throw new Error('Method not implemented.');
-  }
-  // REMOVED ALL STATIC METHODS - They were causing void return type errors
+  private actor: ActorSubclass<_SERVICE>;
 
-  constructor(private actor: ActorSubclass<_SERVICE>) {}
+  constructor(actor: ActorSubclass<_SERVICE>) {
+    this.actor = actor;
+  }
 
-  // ====== ENHANCED QUIZ METHODS - PROPER MOTOKO INTEGRATION ======
+  // ===== USER FUNCTIONS =====
 
   /**
-   * Get quiz for a specific course and module from Motoko backend
+   * Update user profile
    */
-  async getQuiz(courseId: number, moduleId: number): Promise<EnhancedCourseQuiz | null> {
+  async updateUser(name: string, email?: string): Promise<{ ok: string } | { err: string }> {
     try {
-      console.log(`📝 Fetching quiz for Course: ${courseId}, Module: ${moduleId}`);
+      const result = await this.actor.updateUser(name, email ? [email] : []);
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      return { err: 'Failed to update user' };
+    }
+  }
 
+  /**
+   * Get my profile
+   */
+  async getMyProfile(): Promise<any> {
+    try {
+      const result = await this.actor.getMyProfile();
+      return result ? convertBigIntToString(result) : null;
+    } catch (error) {
+      console.error('Error getting profile:', error);
+      return null;
+    }
+  }
+
+  // ===== COURSE FUNCTIONS =====
+
+  /**
+   * Get all courses
+   */
+  async getCourses(): Promise<CourseInfo[]> {
+    try {
+      const result = await this.actor.getCourses();
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error getting courses:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get courses by category
+   */
+  async getCoursesByCategory(category: string): Promise<CourseInfo[]> {
+    try {
+      const result = await this.actor.getCoursesByCategory(category);
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error getting courses by category:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Search courses
+   */
+  async searchCourses(searchQuery: string): Promise<CourseInfo[]> {
+    try {
+      const result = await this.actor.searchCourses(searchQuery);
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error searching courses:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get course by ID
+   */
+  async getCourseById(courseId: number): Promise<CourseInfo | null> {
+    try {
+      const result = await this.actor.getCourseById(toBigInt(courseId));
+      return result ? convertBigIntToString(result) : null;
+    } catch (error) {
+      console.error('Error getting course by ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get all categories
+   */
+  async getCategories(): Promise<string[]> {
+    try {
+      const result = await this.actor.getCategories();
+      return result || [];
+    } catch (error) {
+      console.error('Error getting categories:', error);
+      return [];
+    }
+  }
+
+  // ===== ENROLLMENT FUNCTIONS =====
+
+  /**
+   * Enroll in a course
+   */
+  async enrollCourse(courseId: number): Promise<{ ok: string } | { err: string }> {
+    try {
+      const result = await this.actor.enrollCourse(toBigInt(courseId));
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error enrolling in course:', error);
+      return { err: 'Failed to enroll in course' };
+    }
+  }
+
+  /**
+   * Get my enrollments
+   */
+  async getMyEnrollments(): Promise<Enrollment[]> {
+    try {
+      const result = await this.actor.getMyEnrollments();
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error getting enrollments:', error);
+      return [];
+    }
+  }
+
+  // ===== LEARNING MATERIALS FUNCTIONS =====
+
+  /**
+   * Get course materials
+   */
+  async getCourseMaterials(courseId: number): Promise<{ ok: CourseMaterial } | { err: string }> {
+    try {
+      const result = await this.actor.getCourseMaterials(toBigInt(courseId));
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error getting course materials:', error);
+      return { err: 'Failed to get course materials' };
+    }
+  }
+
+  /**
+   * Get specific module
+   */
+  async getModule(courseId: number, moduleId: number): Promise<{ ok: Module } | { err: string }> {
+    try {
+      const result = await this.actor.getModule(toBigInt(courseId), toBigInt(moduleId));
+      return convertBigIntToString(result);
+    } catch (error) {
+      console.error('Error getting module:', error);
+      return { err: 'Failed to get module' };
+    }
+  }
+
+  // ===== QUIZ FUNCTIONS =====
+
+  /**
+   * Get quiz for specific module
+   */
+  async getQuiz(
+    courseId: number,
+    moduleId: number
+  ): Promise<{ ok: EnhancedCourseQuiz } | { err: string }> {
+    try {
       const result = await this.actor.getQuiz(toBigInt(courseId), toBigInt(moduleId));
-
-      if ('ok' in result) {
-        const convertedQuiz = convertBigIntToString(result.ok) as EnhancedCourseQuiz;
-        console.log('✅ Quiz loaded from Motoko backend:', convertedQuiz.title);
-        return convertedQuiz;
-      } else {
-        console.warn('⚠️  Quiz not found:', result.err);
-        return null;
-      }
+      return convertBigIntToString(result);
     } catch (error) {
-      console.error('❌ Error fetching quiz from backend:', error);
-      throw error;
+      console.error('Error getting quiz:', error);
+      return { err: 'Failed to get quiz' };
     }
   }
 
   /**
-   * Get final assessment quiz for course completion
-   * Usually stored as moduleId 999 or the last module
-   */
-  async getFinalQuiz(courseId: number): Promise<EnhancedCourseQuiz | null> {
-    try {
-      console.log(`🎯 Fetching final quiz for Course: ${courseId}`);
-
-      // Try moduleId 999 first (convention for final quiz)
-      let result = await this.actor.getQuiz(toBigInt(courseId), toBigInt(999));
-
-      if ('ok' in result) {
-        const convertedQuiz = convertBigIntToString(result.ok) as EnhancedCourseQuiz;
-        console.log('✅ Final quiz loaded (moduleId 999):', convertedQuiz.title);
-        return convertedQuiz;
-      }
-
-      // If no quiz with moduleId 999, try to get the last module's quiz
-      const materials = await this.getCourseMaterials(courseId);
-      if ('ok' in materials && materials.ok.modules.length > 0) {
-        const lastModuleId = Number(materials.ok.modules[materials.ok.modules.length - 1].moduleId);
-
-        result = await this.actor.getQuiz(toBigInt(courseId), toBigInt(lastModuleId));
-        if ('ok' in result) {
-          const convertedQuiz = convertBigIntToString(result.ok) as EnhancedCourseQuiz;
-          console.log('✅ Final quiz loaded (last module):', convertedQuiz.title);
-          return convertedQuiz;
-        }
-      }
-
-      console.warn('⚠️  No final quiz found for course:', courseId);
-      return null;
-    } catch (error) {
-      console.error('❌ Error fetching final quiz:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Submit quiz answers to Motoko backend
+   * Submit quiz answers
    */
   async submitQuiz(
     courseId: number,
     moduleId: number,
     answers: { questionId: number; selectedAnswer: number }[]
-  ): Promise<EnhancedQuizResult | null> {
+  ): Promise<{ ok: EnhancedQuizResult } | { err: string }> {
     try {
-      console.log(`📤 Submitting quiz for Course: ${courseId}, Module: ${moduleId}`);
-
-      // Convert answers to backend format
-      const formattedAnswers: UserAnswer[] = answers.map((answer) => ({
+      const convertedAnswers = answers.map((answer) => ({
         questionId: toBigInt(answer.questionId),
         selectedAnswer: toBigInt(answer.selectedAnswer),
       }));
@@ -165,354 +278,281 @@ export class LearningService {
       const result = await this.actor.submitQuiz(
         toBigInt(courseId),
         toBigInt(moduleId),
-        formattedAnswers
+        convertedAnswers
       );
 
-      if ('ok' in result) {
-        const convertedResult = convertBigIntToString(result.ok) as EnhancedQuizResult;
-        console.log('✅ Quiz submitted successfully:', {
-          score: convertedResult.score,
-          passed: convertedResult.passed,
-        });
-        return convertedResult;
-      } else {
-        console.error('❌ Quiz submission failed:', result.err);
-        throw new Error(result.err);
-      }
+      return convertBigIntToString(result);
     } catch (error) {
-      console.error('❌ Error submitting quiz:', error);
-      throw error;
+      console.error('Error submitting quiz:', error);
+      return { err: 'Failed to submit quiz' };
     }
   }
 
   /**
-   * Get all quiz results for a user in a course
+   * Get all quizzes
    */
-  async getQuizResults(courseId: number): Promise<EnhancedQuizResult[]> {
+  async getAllQuizzes(): Promise<EnhancedCourseQuiz[]> {
     try {
-      console.log(`📊 Fetching quiz results for Course: ${courseId}`);
-
-      const results = await this.actor.getMyQuizResults(toBigInt(courseId));
-      const convertedResults = convertBigIntToString(results) as EnhancedQuizResult[];
-
-      console.log('✅ Quiz results loaded:', convertedResults.length, 'results');
-      return convertedResults;
+      const result = await this.actor.getAllQuizzes();
+      return convertBigIntToString(result);
     } catch (error) {
-      console.error('❌ Error fetching quiz results:', error);
+      console.error('Error getting all quizzes:', error);
       return [];
     }
   }
 
   /**
-   * Get quiz result for specific module
+   * Get quiz preview
    */
-  async getQuizResultByModule(
-    courseId: number,
-    moduleId: number
-  ): Promise<EnhancedQuizResult | null> {
+  async getQuizPreview(courseId: number): Promise<EnhancedQuizPreview | null> {
     try {
-      const allResults = await this.getQuizResults(courseId);
-      const moduleResult = allResults.find((result) => result.moduleId === moduleId);
-
-      if (moduleResult) {
-        console.log(`✅ Quiz result found for Module ${moduleId}:`, {
-          score: moduleResult.score,
-          passed: moduleResult.passed,
-        });
-      }
-
-      return moduleResult || null;
+      const result = await this.actor.getQuizPreview(toBigInt(courseId));
+      return result ? convertBigIntToString(result) : null;
     } catch (error) {
-      console.error('❌ Error fetching quiz result by module:', error);
+      console.error('Error getting quiz preview:', error);
       return null;
     }
   }
 
   /**
-   * Check if user has passed a specific quiz
+   * Validate quiz answers
    */
-  async hasPassedQuiz(courseId: number, moduleId: number): Promise<boolean> {
+  async validateAnswers(
+    answers: { questionId: number; selectedAnswer: number }[],
+    quizQuestions: EnhancedQuizQuestion[]
+  ): Promise<{ ok: boolean } | { err: string }> {
     try {
-      const result = await this.getQuizResultByModule(courseId, moduleId);
-      return result ? result.passed : false;
+      const convertedAnswers = answers.map((answer) => ({
+        questionId: toBigInt(answer.questionId),
+        selectedAnswer: toBigInt(answer.selectedAnswer),
+      }));
+
+      const convertedQuestions = quizQuestions.map((q) => ({
+        ...q,
+        questionId: toBigInt(q.questionId),
+        correctAnswer: toBigInt(q.correctAnswer),
+      }));
+
+      const result = await this.actor.validateAnswers(convertedAnswers, convertedQuestions);
+      return convertBigIntToString(result);
     } catch (error) {
-      console.error('❌ Error checking quiz pass status:', error);
-      return false;
+      console.error('Error validating answers:', error);
+      return { err: 'Failed to validate answers' };
     }
   }
 
   /**
-   * Get quiz score for specific module
+   * Get quiz with validation
    */
-  async getQuizScore(courseId: number, moduleId: number): Promise<number> {
+  async getQuizWithValidation(
+    courseId: number,
+    moduleId: number
+  ): Promise<{ ok: EnhancedQuizPreview } | { err: string }> {
     try {
-      const result = await this.getQuizResultByModule(courseId, moduleId);
-      return result ? result.score : 0;
+      const result = await this.actor.getQuizWithValidation(toBigInt(courseId), toBigInt(moduleId));
+      return convertBigIntToString(result);
     } catch (error) {
-      console.error('❌ Error getting quiz score:', error);
-      return 0;
+      console.error('Error getting quiz with validation:', error);
+      return { err: 'Failed to get quiz with validation' };
+    }
+  }
+
+  // ===== PROGRESS TRACKING =====
+
+  /**
+   * Get user progress for a course
+   */
+  async getUserProgress(courseId: number): Promise<UserProgress | null> {
+    try {
+      const result = await this.actor.getMyProgress(toBigInt(courseId));
+      return result ? convertBigIntToString(result) : null;
+    } catch (error) {
+      console.error('Error getting user progress:', error);
+      return null;
     }
   }
 
   /**
-   * Check if user can take final quiz (all modules completed)
+   * Get quiz results for a course
+   */
+  async getQuizResults(courseId: number): Promise<EnhancedQuizResult[]> {
+    try {
+      const result = await this.actor.getMyQuizResults(toBigInt(courseId));
+      return result ? convertBigIntToString(result) : [];
+    } catch (error) {
+      console.error('Error getting quiz results:', error);
+      return [];
+    }
+  }
+
+  // ===== CERTIFICATE FUNCTIONS =====
+
+  /**
+   * Get user certificates
+   */
+  async getUserCertificates(): Promise<BackendCertificate[]> {
+    try {
+      const result = await this.actor.getMyCertificates();
+      return result ? convertBigIntToString(result) : [];
+    } catch (error) {
+      console.error('Error getting user certificates:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get specific certificate by token ID
+   */
+  async getCertificate(tokenId: number): Promise<BackendCertificate | null> {
+    try {
+      const result = await this.actor.getCertificate(toBigInt(tokenId));
+      return result ? convertBigIntToString(result) : null;
+    } catch (error) {
+      console.error('Error getting certificate:', error);
+      return null;
+    }
+  }
+
+  // ===== ANALYTICS FUNCTIONS =====
+
+  /**
+   * Get course statistics
+   */
+  async getCourseStats(courseId: number): Promise<CourseStats | null> {
+    try {
+      const result = await this.actor.getCourseStats(toBigInt(courseId));
+      return result ? convertBigIntToString(result) : null;
+    } catch (error) {
+      console.error('Error getting course stats:', error);
+      return null;
+    }
+  }
+
+  // ===== CONVENIENCE METHODS =====
+
+  /**
+   * Check if user can take final quiz
    */
   async canTakeFinalQuiz(courseId: number): Promise<boolean> {
     try {
-      console.log(`🔍 Checking final quiz eligibility for Course: ${courseId}`);
+      // Get user progress
+      const progress = await this.getUserProgress(courseId);
+      const materialsResult = await this.getCourseMaterials(courseId);
 
-      // Get course materials to check total modules
-      const materialsResult = await this.actor.getCourseMaterials(toBigInt(courseId));
-      if (!('ok' in materialsResult)) {
+      if (!progress || !('ok' in materialsResult)) {
         return false;
       }
 
       const materials = materialsResult.ok;
       const totalModules = materials.modules.length;
-
-      // Get user progress
-      const progressResult = await this.actor.getMyProgress(toBigInt(courseId));
-      if (!progressResult || progressResult.length === 0) {
-        return false;
-      }
-
-      const progress = progressResult[0];
       const completedModules = progress.completedModules.length;
 
-      // Check if all modules are completed
-      const allModulesCompleted = completedModules >= totalModules;
-
-      // Optional: Check if all module quizzes are passed (if they exist)
-      const quizResults = await this.getQuizResults(courseId);
-      let allQuizzesPassed = true;
-
-      // Check each module for quiz requirements
-      for (const module of materials.modules) {
-        const moduleId = Number(module.moduleId);
-
-        // Try to get quiz for this module
-        try {
-          const moduleQuiz = await this.getQuiz(courseId, moduleId);
-          if (moduleQuiz) {
-            // Quiz exists for this module, check if passed
-            const quizResult = quizResults.find((r) => r.moduleId === moduleId);
-            if (!quizResult || !quizResult.passed) {
-              allQuizzesPassed = false;
-              break;
-            }
-          }
-        } catch (error) {
-          // No quiz for this module, continue
-        }
-      }
-
-      const canTake = allModulesCompleted && allQuizzesPassed;
-      console.log(`${canTake ? '✅' : '❌'} Final quiz eligibility:`, {
-        allModulesCompleted,
-        allQuizzesPassed,
-        completedModules: `${completedModules}/${totalModules}`,
-      });
-
-      return canTake;
+      // Can take final quiz if all modules are completed
+      return completedModules >= totalModules;
     } catch (error) {
-      console.error('❌ Error checking final quiz eligibility:', error);
+      console.error('Error checking final quiz availability:', error);
       return false;
     }
   }
 
   /**
-   * Get quiz availability for all modules in a course
+   * Get final quiz (assuming it's the last module's quiz)
    */
-  async getQuizAvailability(courseId: number): Promise<{ [moduleId: number]: boolean }> {
+  async getFinalQuiz(courseId: number): Promise<EnhancedCourseQuiz | null> {
     try {
-      console.log(`📋 Checking quiz availability for Course: ${courseId}`);
+      // Get course materials to find the last module
+      const materialsResult = await this.getCourseMaterials(courseId);
 
-      const materialsResult = await this.actor.getCourseMaterials(toBigInt(courseId));
       if (!('ok' in materialsResult)) {
-        return {};
+        return null;
       }
 
       const materials = materialsResult.ok;
-      const availability: { [moduleId: number]: boolean } = {};
-
-      // Check each module for quiz availability
-      for (const module of materials.modules) {
-        const moduleId = Number(module.moduleId);
-        try {
-          const quiz = await this.getQuiz(courseId, moduleId);
-          availability[moduleId] = quiz !== null;
-        } catch (error) {
-          availability[moduleId] = false;
-        }
+      if (materials.modules.length === 0) {
+        return null;
       }
 
-      console.log('✅ Quiz availability checked:', availability);
-      return availability;
+      // Get quiz for the last module
+      const lastModule = materials.modules[materials.modules.length - 1];
+      const quizResult = await this.getQuiz(courseId, Number(lastModule.moduleId));
+
+      if ('ok' in quizResult) {
+        return quizResult.ok;
+      }
+
+      return null;
     } catch (error) {
-      console.error('❌ Error checking quiz availability:', error);
-      return {};
+      console.error('Error getting final quiz:', error);
+      return null;
     }
   }
 
-  // ====== EXISTING METHODS (keeping for compatibility) ======
-
-  async enrollInCourse(courseId: number) {
+  /**
+   * Check course completion status
+   */
+  async checkCourseCompletion(courseId: number): Promise<CourseCompletionStatus> {
     try {
-      const result = await this.actor.enrollCourse(toBigInt(courseId));
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error enrolling in course:', error);
-      throw error;
-    }
-  }
+      console.log(`🎓 Checking course completion for Course: ${courseId}`);
 
-  async checkEnrollmentStatus(courseId: number): Promise<boolean> {
-    try {
-      const enrollments = await this.actor.getMyEnrollments();
-      const convertedEnrollments = convertBigIntToString(enrollments);
-      return convertedEnrollments.some(
-        (enrollment: any) => Number(enrollment.courseId) === courseId
-      );
-    } catch (error) {
-      console.error('Error checking enrollment status:', error);
-      throw error;
-    }
-  }
-
-  async getUserEnrollments() {
-    try {
-      const result = await this.actor.getMyEnrollments();
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching enrollments:', error);
-      throw error;
-    }
-  }
-
-  async getCourseInfo(courseId: number) {
-    try {
-      const result = await this.actor.getCourseById(toBigInt(courseId));
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching course info:', error);
-      throw error;
-    }
-  }
-
-  async getCourseMaterials(courseId: number) {
-    try {
-      const result = await this.actor.getCourseMaterials(toBigInt(courseId));
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching course materials:', error);
-      throw error;
-    }
-  }
-
-  async getModule(courseId: number, moduleId: number) {
-    try {
-      const result = await this.actor.getModule(toBigInt(courseId), toBigInt(moduleId));
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching module:', error);
-      throw error;
-    }
-  }
-
-  async getUserProgress(courseId: number) {
-    try {
-      const result = await this.actor.getMyProgress(toBigInt(courseId));
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching user progress:', error);
-      throw error;
-    }
-  }
-
-  async getUserCertificates() {
-    try {
-      const result = await this.actor.getMyCertificates();
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching certificates:', error);
-      throw error;
-    }
-  }
-
-  async getCertificate(tokenId: number) {
-    try {
-      const result = await this.actor.getCertificate(toBigInt(tokenId));
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching certificate:', error);
-      throw error;
-    }
-  }
-
-  async getCourseStats(courseId: number) {
-    try {
-      const result = await this.actor.getCourseStats(toBigInt(courseId));
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error fetching course stats:', error);
-      throw error;
-    }
-  }
-
-  // Utility Methods
-  async calculateOverallProgress(courseId: number): Promise<number> {
-    try {
+      // Check if all modules are completed
       const progress = await this.getUserProgress(courseId);
-      if (progress && progress.length > 0 && typeof progress[0].overallProgress === 'number') {
-        return progress[0].overallProgress;
-      }
-
-      // Fallback calculation
       const materialsResult = await this.getCourseMaterials(courseId);
-      if ('ok' in materialsResult) {
-        const materials = materialsResult.ok;
-        const totalModules = materials.modules.length;
-        if (totalModules === 0) return 0;
 
-        const progressData = await this.getUserProgress(courseId);
-        if (progressData && progressData.length > 0) {
-          const completedModules = progressData[0].completedModules.length;
-          return (completedModules / totalModules) * 100;
+      if (!('ok' in materialsResult) || !progress) {
+        return {
+          certificate: null,
+          canGetCertificate: false,
+          hasQuizPassed: false,
+          isComplete: false,
+        };
+      }
+
+      const materials = materialsResult.ok;
+      const totalModules = materials.modules.length;
+      const completedModules = progress.completedModules.length;
+      const isComplete = completedModules >= totalModules;
+
+      // Check if quiz is passed (if it exists)
+      let hasQuizPassed = true; // Default to true if no quiz exists
+      const quizResults = await this.getQuizResults(courseId);
+
+      if (quizResults.length > 0) {
+        // Check if the user has passed any quiz for this course
+        hasQuizPassed = quizResults.some((result) => result.passed);
+      }
+
+      const canGetCertificate = isComplete && hasQuizPassed;
+
+      // Try to get existing certificates and find one for this course
+      let certificate = null;
+      if (canGetCertificate) {
+        try {
+          const certificates = await this.getUserCertificates();
+          certificate = certificates.find((cert) => Number(cert.courseId) === courseId) || null;
+        } catch (error) {
+          console.log('No certificate found yet');
         }
       }
 
-      return 0;
+      return {
+        certificate,
+        canGetCertificate,
+        hasQuizPassed,
+        isComplete,
+      };
     } catch (error) {
-      console.error('Error calculating progress:', error);
-      return 0;
-    }
-  }
-
-  async getCompletedModules(courseId: number): Promise<number[]> {
-    try {
-      const progress = await this.getUserProgress(courseId);
-      if (progress && progress.length > 0 && progress[0].completedModules) {
-        return progress[0].completedModules.map((id: any) => Number(id));
-      }
-      return [];
-    } catch (error) {
-      console.error('Error fetching completed modules:', error);
-      return [];
-    }
-  }
-
-  async isModuleCompleted(courseId: number, moduleId: number): Promise<boolean> {
-    try {
-      const completedModules = await this.getCompletedModules(courseId);
-      return completedModules.includes(moduleId);
-    } catch (error) {
-      console.error('Error checking module completion:', error);
-      return false;
+      console.error('❌ Error checking course completion:', error);
+      return {
+        certificate: null,
+        canGetCertificate: false,
+        hasQuizPassed: false,
+        isComplete: false,
+      };
     }
   }
 }
 
-// Hook untuk menggunakan learning service
+// Hook to use learning service
 export const useLearningService = (actor: ActorSubclass<_SERVICE> | null) => {
   if (!actor) return null;
   return new LearningService(actor);
@@ -539,16 +579,17 @@ export const useQuizManager = (learningService: LearningService | null, courseId
         setError(null);
         console.log(`🔄 Loading quiz for Module: ${moduleId}`);
 
-        const quiz = await learningService.getQuiz(courseId, moduleId);
-        setCurrentQuiz(quiz);
+        const result = await learningService.getQuiz(courseId, moduleId);
 
-        if (quiz) {
-          console.log('✅ Quiz loaded:', quiz.title);
+        if ('ok' in result) {
+          setCurrentQuiz(result.ok);
+          console.log('✅ Quiz loaded:', result.ok.title);
+          return result.ok;
         } else {
-          console.log('ℹ️  No quiz found for this module');
+          console.log('ℹ️  No quiz found for this module:', result.err);
+          setCurrentQuiz(null);
+          return null;
         }
-
-        return quiz;
       } catch (error) {
         console.error('❌ Error loading quiz:', error);
         setError('Failed to load quiz');
@@ -600,17 +641,20 @@ export const useQuizManager = (learningService: LearningService | null, courseId
 
         const result = await learningService.submitQuiz(courseId, moduleId, answers);
 
-        if (result) {
-          console.log('✅ Quiz submitted successfully:', result);
+        if ('ok' in result) {
+          console.log('✅ Quiz submitted successfully:', result.ok);
           // Refresh quiz results
           await refreshQuizResults();
+          return result.ok;
+        } else {
+          console.error('❌ Quiz submission failed:', result.err);
+          setError(result.err);
+          return null;
         }
-
-        return result;
       } catch (error) {
         console.error('❌ Error submitting quiz:', error);
         setError('Failed to submit quiz');
-        throw error;
+        return null;
       } finally {
         setIsLoading(false);
       }
@@ -645,14 +689,18 @@ export const useQuizManager = (learningService: LearningService | null, courseId
     submitQuiz,
     refreshQuizResults,
     clearCurrentQuiz: () => setCurrentQuiz(null),
-    getQuizResult: (moduleId: number) =>
-      quizResults.find((result) => result.moduleId === moduleId) || null,
-    hasPassedQuiz: (moduleId: number) => {
-      const result = quizResults.find((r) => r.moduleId === moduleId);
+    getQuizResult: (moduleId?: number) => {
+      if (moduleId !== undefined) {
+        return quizResults.find((result) => result.courseId === courseId) || null;
+      }
+      return quizResults.find((result) => result.courseId === courseId) || null;
+    },
+    hasPassedQuiz: () => {
+      const result = quizResults.find((r) => r.courseId === courseId);
       return result ? result.passed : false;
     },
-    getQuizScore: (moduleId: number) => {
-      const result = quizResults.find((r) => r.moduleId === moduleId);
+    getQuizScore: () => {
+      const result = quizResults.find((r) => r.courseId === courseId);
       return result ? result.score : 0;
     },
   };

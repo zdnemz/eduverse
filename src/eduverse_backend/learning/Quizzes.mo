@@ -5,11 +5,10 @@ import Nat "mo:base/Nat";
 
 module {
   public let quizzes : [Types.CourseQuiz] = [
-    // Quiz untuk Course 1: Blockchain Fundamentals & Ethereum
+    // Quiz untuk Course 1: Blockchain Fundamentals & Ethereum (7 soal)
     {
       courseId = 1;
-      moduleId = 1;
-      title = "Quiz: Introduction to Blockchain Technology";
+      title = "Quiz: Blockchain Fundamentals & Ethereum";
       questions = [
         {
           questionId = 1;
@@ -20,7 +19,7 @@ module {
             "Desentralisasi dan immutability",
             "Hanya dapat diakses oleh pengguna tertentu"
           ];
-          correctAnswer = 2; // index 2 (Desentralisasi dan immutability)
+          correctAnswer = 2;
           explanation = "Blockchain berbeda karena sifatnya yang desentralisasi (tidak ada otoritas pusat) dan immutable (sulit diubah setelah data tercatat).";
         },
         {
@@ -49,40 +48,6 @@ module {
         },
         {
           questionId = 4;
-          question = "Apa yang terjadi dalam proses validasi transaksi blockchain?";
-          options = [
-            "Bank central memverifikasi semua transaksi",
-            "Network nodes bekerjasama memvalidasi dan mencapai konsensus",
-            "Pengirim transaksi memvalidasi sendiri",
-            "Tidak ada proses validasi"
-          ];
-          correctAnswer = 1;
-          explanation = "Dalam blockchain, network nodes bekerja sama untuk memvalidasi transaksi dan mencapai konsensus sebelum transaksi dikonfirmasi.";
-        },
-        {
-          questionId = 5;
-          question = "Apa keuntungan utama transparansi dalam blockchain?";
-          options = [
-            "Data tidak dapat dilihat siapa pun",
-            "Hanya admin yang dapat melihat data",
-            "Semua transaksi dapat diverifikasi publik sehingga meningkatkan trust",
-            "Data selalu berubah-ubah"
-          ];
-          correctAnswer = 2;
-          explanation = "Transparansi blockchain memungkinkan semua orang untuk memverifikasi transaksi, yang meningkatkan kepercayaan dalam sistem tanpa perlu trust pada pihak ketiga.";
-        }
-      ];
-      passingScore = 60; // 3 dari 5 soal benar
-      timeLimit = 5; // 5 menit dalam detik
-    },
-    
-    {
-      courseId = 1;
-      moduleId = 2;
-      title = "Quiz: Understanding Ethereum";
-      questions = [
-        {
-          questionId = 1;
           question = "Apa perbedaan utama antara Ethereum dan Bitcoin?";
           options = [
             "Ethereum hanya untuk transfer uang, Bitcoin untuk smart contracts",
@@ -94,7 +59,7 @@ module {
           explanation = "Bitcoin fokus pada transfer nilai, sedangkan Ethereum adalah platform yang memungkinkan smart contracts dan aplikasi terdesentralisasi.";
         },
         {
-          questionId = 2;
+          questionId = 5;
           question = "Apa fungsi Gas dalam network Ethereum?";
           options = [
             "Untuk mengisi bahan bakar kendaraan",
@@ -106,19 +71,7 @@ module {
           explanation = "Gas adalah unit yang mengukur biaya komputasi. Setiap operasi di Ethereum membutuhkan gas untuk dibayar dalam bentuk Ether.";
         },
         {
-          questionId = 3;
-          question = "Apa kepanjangan dari EVM?";
-          options = [
-            "Ethereum Value Machine",
-            "Electronic Virtual Money",
-            "Ethereum Virtual Machine",
-            "Enhanced Verification Method"
-          ];
-          correctAnswer = 2;
-          explanation = "EVM (Ethereum Virtual Machine) adalah runtime environment yang mengeksekusi smart contracts di network Ethereum.";
-        },
-        {
-          questionId = 4;
+          questionId = 6;
           question = "Konsensus mechanism apa yang digunakan Ethereum setelah The Merge?";
           options = [
             "Proof of Work",
@@ -130,27 +83,26 @@ module {
           explanation = "Setelah The Merge pada September 2022, Ethereum beralih dari Proof of Work ke Proof of Stake untuk efisiensi energi.";
         },
         {
-          questionId = 5;
-          question = "Apa yang dimaksud dengan Turing-complete dalam konteks Ethereum?";
+          questionId = 7;
+          question = "Apa keuntungan utama transparansi dalam blockchain?";
           options = [
-            "Ethereum dapat menyelesaikan masalah matematika apapun",
-            "Ethereum dapat menjalankan program apapun yang dapat dikomputasi",
-            "Ethereum lebih cepat dari komputer biasa", 
-            "Ethereum hanya untuk aplikasi sederhana"
+            "Data tidak dapat dilihat siapa pun",
+            "Hanya admin yang dapat melihat data",
+            "Semua transaksi dapat diverifikasi publik sehingga meningkatkan trust",
+            "Data selalu berubah-ubah"
           ];
-          correctAnswer = 1;
-          explanation = "Turing-complete berarti Ethereum dapat menjalankan program atau algoritma apapun yang dapat dikomputasi, membuatnya sangat fleksibel.";
+          correctAnswer = 2;
+          explanation = "Transparansi blockchain memungkinkan semua orang untuk memverifikasi transaksi, yang meningkatkan kepercayaan dalam sistem tanpa perlu trust pada pihak ketiga.";
         }
       ];
-      passingScore = 60;
-      timeLimit = 300;
+      passingScore = 60; // 5 dari 7 soal benar
+      timeLimit = 420; // 7 menit
     },
-
-    // Quiz untuk Course 2: Solidity Smart Contract Development
+    
+    // Quiz untuk Course 2: Solidity Smart Contract Development (7 soal)
     {
       courseId = 2;
-      moduleId = 1;
-      title = "Quiz: Introduction to Smart Contracts";
+      title = "Quiz: Solidity Smart Contract Development";
       questions = [
         {
           questionId = 1;
@@ -178,50 +130,73 @@ module {
         },
         {
           questionId = 3;
-          question = "Apa yang dimaksud dengan immutable dalam smart contracts?";
+          question = "Keyword apa yang digunakan untuk mendeklarasikan state variable yang dapat diubah dari luar contract?";
           options = [
-            "Contract dapat diubah kapan saja",
-            "Contract tidak dapat diubah setelah deploy (kecuali ada upgrade mechanism)",
-            "Contract selalu berubah otomatis",
-            "Contract hanya bisa diubah oleh admin"
+            "private",
+            "internal",
+            "public",
+            "external"
           ];
-          correctAnswer = 1;
-          explanation = "Immutable berarti smart contract tidak dapat diubah setelah dideploy, kecuali ada mekanisme upgrade yang dirancang khusus.";
+          correctAnswer = 2;
+          explanation = "Keyword 'public' membuat state variable dapat diakses dari luar contract dan otomatis membuat getter function.";
         },
         {
           questionId = 4;
-          question = "Manakah yang BUKAN merupakan use case smart contracts?";
+          question = "Apa yang dimaksud dengan 'payable' function di Solidity?";
           options = [
-            "Decentralized exchanges (DEX)",
-            "Voting systems",
-            "Physical warehouse management",
-            "Insurance claims automation"
+            "Function yang membayar gas fee",
+            "Function yang dapat menerima Ether",
+            "Function yang hanya bisa dipanggil owner",
+            "Function yang tidak memerlukan gas"
           ];
-          correctAnswer = 2;
-          explanation = "Smart contracts beroperasi di dunia digital dan tidak dapat langsung mengelola aset fisik seperti warehouse tanpa oracle atau sistem eksternal.";
+          correctAnswer = 1;
+          explanation = "Function dengan modifier 'payable' dapat menerima Ether ketika dipanggil. Tanpa modifier ini, function akan reject Ether.";
         },
         {
           questionId = 5;
-          question = "Apa yang membuat smart contracts 'trustless'?";
+          question = "Manakah data type yang tepat untuk menyimpan alamat Ethereum di Solidity?";
           options = [
-            "Semua orang saling tidak percaya",
-            "Tidak memerlukan trust pada pihak ketiga karena kode yang mengatur eksekusi",
-            "Tidak ada yang dapat dipercaya",
-            "Hanya pemilik contract yang dipercaya"
+            "string",
+            "bytes32",
+            "address",
+            "uint256"
+          ];
+          correctAnswer = 2;
+          explanation = "Data type 'address' didesain khusus untuk menyimpan alamat Ethereum (20 bytes) dan memiliki built-in methods seperti .balance dan .transfer().";
+        },
+        {
+          questionId = 6;
+          question = "Apa fungsi modifier 'view' pada function Solidity?";
+          options = [
+            "Function dapat mengubah state",
+            "Function tidak dapat mengubah state tapi bisa membaca",
+            "Function tidak dapat membaca atau mengubah state",
+            "Function hanya bisa dipanggil sekali"
           ];
           correctAnswer = 1;
-          explanation = "Trustless berarti tidak perlu mempercayai pihak ketiga karena kode smart contract yang transparan dan immutable yang memastikan eksekusi sesuai aturan.";
+          explanation = "Modifier 'view' menandakan bahwa function tidak mengubah state variables, hanya membaca data dari blockchain.";
+        },
+        {
+          questionId = 7;
+          question = "Event di Solidity digunakan untuk apa?";
+          options = [
+            "Menyimpan data permanent di blockchain",
+            "Logging dan komunikasi dengan aplikasi external",
+            "Menjalankan function otomatis",
+            "Menghemat gas fee"
+          ];
+          correctAnswer = 1;
+          explanation = "Event digunakan untuk logging aktivitas di blockchain dan memungkinkan aplikasi external untuk mendeteksi perubahan di smart contract.";
         }
       ];
       passingScore = 60;
-      timeLimit = 300;
+      timeLimit = 420;
     },
 
-    // Quiz untuk Course 3: Internet Computer Development
+    // Quiz untuk Course 3: Internet Computer Development (7 soal)
     {
       courseId = 3;
-      moduleId = 1;
-      title = "Quiz: Introduction to Internet Computer";
+      title = "Quiz: Internet Computer Development";
       questions = [
         {
           questionId = 1;
@@ -261,18 +236,42 @@ module {
         },
         {
           questionId = 4;
-          question = "Consensus mechanism apa yang digunakan Internet Computer?";
+          question = "Apa paradigma pemrograman yang digunakan Motoko?";
           options = [
-            "Proof of Work",
-            "Proof of Stake", 
-            "Threshold Relay",
-            "Proof of Authority"
+            "Object-oriented programming",
+            "Actor-based programming",
+            "Functional programming",
+            "Procedural programming"
           ];
-          correctAnswer = 2;
-          explanation = "Internet Computer menggunakan novel consensus mechanism yang disebut 'Threshold Relay' yang memungkinkan finality yang sangat cepat.";
+          correctAnswer = 1;
+          explanation = "Motoko menggunakan actor-based programming dimana setiap canister adalah actor yang berkomunikasi via message passing.";
         },
         {
           questionId = 5;
+          question = "Apa perbedaan antara stable dan non-stable variables di Motoko?";
+          options = [
+            "Stable variables hilang saat upgrade, non-stable variables persist",
+            "Stable variables persist across upgrades, non-stable variables direset",
+            "Tidak ada perbedaan",
+            "Stable variables lebih cepat"
+          ];
+          correctAnswer = 1;
+          explanation = "Stable variables persist across canister upgrades, sedangkan non-stable variables akan direset ke nilai default saat upgrade.";
+        },
+        {
+          questionId = 6;
+          question = "Syntax apa yang digunakan untuk error handling di Motoko?";
+          options = [
+            "try-catch",
+            "Result type dengan #ok dan #err",
+            "throw-exception",
+            "if-else statements"
+          ];
+          correctAnswer = 1;
+          explanation = "Motoko menggunakan Result type yang dapat berisi #ok(value) untuk success atau #err(error) untuk error handling yang type-safe.";
+        },
+        {
+          questionId = 7;
           question = "Apa fungsi Cycles dalam Internet Computer?";
           options = [
             "Mata uang untuk trading",
@@ -285,100 +284,30 @@ module {
         }
       ];
       passingScore = 60;
-      timeLimit = 300;
-    },
-
-    {
-      courseId = 3;
-      moduleId = 2;
-      title = "Quiz: Motoko Programming Language";
-      questions = [
-        {
-          questionId = 1;
-          question = "Apa paradigma pemrograman yang digunakan Motoko?";
-          options = [
-            "Object-oriented programming",
-            "Actor-based programming",
-            "Functional programming",
-            "Procedural programming"
-          ];
-          correctAnswer = 1;
-          explanation = "Motoko menggunakan actor-based programming dimana setiap canister adalah actor yang berkomunikasi via message passing.";
-        },
-        {
-          questionId = 2;
-          question = "Apa perbedaan antara stable dan non-stable variables di Motoko?";
-          options = [
-            "Stable variables hilang saat upgrade, non-stable variables persist",
-            "Stable variables persist across upgrades, non-stable variables direset",
-            "Tidak ada perbedaan",
-            "Stable variables lebih cepat"
-          ];
-          correctAnswer = 1;
-          explanation = "Stable variables persist across canister upgrades, sedangkan non-stable variables akan direset ke nilai default saat upgrade.";
-        },
-        {
-          questionId = 3;
-          question = "Syntax apa yang digunakan untuk error handling di Motoko?";
-          options = [
-            "try-catch",
-            "Result type dengan #ok dan #err",
-            "throw-exception",
-            "if-else statements"
-          ];
-          correctAnswer = 1;
-          explanation = "Motoko menggunakan Result type yang dapat berisi #ok(value) untuk success atau #err(error) untuk error handling yang type-safe.";
-        },
-        {
-          questionId = 4;
-          question = "Apa yang dimaksud dengan pattern matching di Motoko?";
-          options = [
-            "Mencocokkan string patterns",
-            "Teknik untuk destructure dan match values menggunakan switch expressions",
-            "Algoritma pencarian",
-            "Sistem database matching"
-          ];
-          correctAnswer = 1;
-          explanation = "Pattern matching memungkinkan untuk destructure dan match values dengan berbagai patterns menggunakan switch expressions, sangat powerful untuk handling variants dan options.";
-        },
-        {
-          questionId = 5;
-          question = "Bagaimana actors berkomunikasi di Motoko?";
-          options = [
-            "Direct function calls",
-            "Shared memory",
-            "Asynchronous message passing",
-            "Global variables"
-          ];
-          correctAnswer = 2;
-          explanation = "Actors berkomunikasi melalui asynchronous message passing, dimana setiap message call mengembalikan Future yang dapat di-await.";
-        }
-      ];
-      passingScore = 60;
-      timeLimit = 300;
+      timeLimit = 420;
     }
 
-    // Tambahan quiz untuk course lain bisa ditambahkan di sini
+    // Quiz untuk course lainnya bisa ditambahkan di sini dengan format yang sama
   ];
 
-// Helper functions untuk quiz management
-  public func getQuizByModuleId(courseId: Nat, moduleId: Nat) : ?Types.CourseQuiz {
+  // Helper functions untuk quiz management
+  public func getQuizByCourseId(courseId: Nat) : ?Types.CourseQuiz {
     for (quiz in quizzes.vals()) {
-      if (quiz.courseId == courseId and quiz.moduleId == moduleId) {
+      if (quiz.courseId == courseId) {
         return ?quiz;
       };
     };
     null
   };
 
-  // TAMBAHAN: Get all quizzes for a course
-  public func getQuizzesByCourseId(courseId: Nat) : [Types.CourseQuiz] {
-    Array.filter<Types.CourseQuiz>(quizzes, func(quiz) = quiz.courseId == courseId)
+  // Get all available quizzes
+  public func getAllQuizzes() : [Types.CourseQuiz] {
+    quizzes
   };
 
-  // TAMBAHAN: Get quiz preview (without correct answers)
-  public func getQuizPreview(courseId: Nat, moduleId: Nat) : ?Types.QuizPreview {
-    switch (getQuizByModuleId(courseId, moduleId)) {
+  // Get quiz preview (without correct answers)
+  public func getQuizPreview(courseId: Nat) : ?Types.QuizPreview {
+    switch (getQuizByCourseId(courseId)) {
       case null { null };
       case (?quiz) {
         let previewQuestions = Array.map<Types.QuizQuestion, Types.QuizQuestionPreview>(
@@ -392,7 +321,6 @@ module {
         
         ?{
           courseId = quiz.courseId;
-          moduleId = quiz.moduleId;
           title = quiz.title;
           questions = previewQuestions;
           passingScore = quiz.passingScore;
@@ -403,7 +331,7 @@ module {
     }
   };
 
-  // TAMBAHAN: Validate quiz answers format
+  // Validate quiz answers format
   public func validateAnswers(answers: [Types.UserAnswer], quizQuestions: [Types.QuizQuestion]) : Result.Result<Bool, Text> {
     if (answers.size() != quizQuestions.size()) {
       return #err("Number of answers doesn't match number of questions");
@@ -450,7 +378,7 @@ module {
     score >= passingScore
   };
 
-  // TAMBAHAN: Enhanced score calculation with detailed feedback
+  // Enhanced score calculation with detailed feedback
   public func calculateDetailedScore(answers: [Nat], correctAnswers: [Nat]) : Types.DetailedQuizScore {
     var correctCount: Nat = 0;
     var incorrectAnswers: [Nat] = [];
@@ -476,6 +404,20 @@ module {
       incorrectAnswers = incorrectAnswers;
       scorePercentage = percentage;
       passed = percentage >= 60; // Default passing score
+    }
+  };
+
+  // Get quiz statistics
+  public func getQuizStatistics(courseId: Nat) : ?{totalQuestions: Nat; timeLimit: Nat; passingScore: Nat} {
+    switch (getQuizByCourseId(courseId)) {
+      case null { null };
+      case (?quiz) {
+        ?{
+          totalQuestions = quiz.questions.size();
+          timeLimit = quiz.timeLimit;
+          passingScore = quiz.passingScore;
+        }
+      };
     }
   };
 };

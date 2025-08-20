@@ -15,6 +15,7 @@ export interface QuizQuestion {
 }
 
 export interface CourseQuiz {
+  moduleId: any;
   courseId: number;
   title: string;
   questions: QuizQuestion[];

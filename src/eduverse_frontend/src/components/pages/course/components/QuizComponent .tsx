@@ -165,8 +165,18 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
         selectedAnswer: answer,
       }));
 
-      // Submit to Motoko backend using course ID only
-      const result = await learningService.submitQuiz(courseId, formattedAnswers);
+      console.log('Submitting quiz with parameters:', {
+        courseId,
+        moduleId: quiz.moduleId,
+        answersCount: formattedAnswers.length,
+      });
+
+      // FIXED: Submit to Motoko backend with correct parameters
+      const result = await learningService.submitQuiz(
+        courseId, // courseId: number
+        quiz.moduleId, // moduleId: number
+        formattedAnswers // answers: array
+      );
 
       if (result) {
         console.log('Quiz submitted successfully:', result);
