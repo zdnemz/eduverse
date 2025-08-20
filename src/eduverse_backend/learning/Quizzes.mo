@@ -73,7 +73,7 @@ module {
         }
       ];
       passingScore = 60; // 3 dari 5 soal benar
-      timeLimit = 300; // 5 menit dalam detik
+      timeLimit = 5; // 5 menit dalam detik
     },
     
     {
