@@ -423,7 +423,7 @@ export default function LearningPage() {
       }
 
       // FIXED: Mengambil quiz results dan mengkonversinya untuk kompatibilitas dengan sidebar
-      const quizResultsData = await actor.getMyQuizResults(courseIdNum);
+      const quizResultsData = await actor.getMyBestQuizResult(courseIdNum);
       const convertedQuizResults = convertBigIntToString(quizResultsData);
 
       // Konversi ke format yang diharapkan oleh CourseSidebar dengan konversi Principal ke string

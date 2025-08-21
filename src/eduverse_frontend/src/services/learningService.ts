@@ -119,7 +119,6 @@ export class LearningService {
       const result = await this.actor.updateUser(name, email ? [email] : []);
       return convertBigIntToString(result);
     } catch (error: unknown) {
-      // FIXED: Explicit unknown type
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error updating user:', errorMessage);
       return { err: 'Failed to update user' };
@@ -196,7 +195,6 @@ export class LearningService {
       const result = await this.actor.getCourseById(toBigInt(courseId));
       return result ? convertBigIntToString(result) : null;
     } catch (error: unknown) {
-      // FIXED: Explicit unknown type
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error getting course by ID:', errorMessage);
       return null;
@@ -292,7 +290,7 @@ export class LearningService {
     moduleId: number
   ): Promise<{ ok: EnhancedCourseQuiz } | { err: string }> {
     try {
-      const result = await this.actor.getQuiz(toBigInt(courseId), toBigInt(moduleId));
+      const result = await this.actor.getQuiz(toBigInt(courseId));
       return convertBigIntToString(result);
     } catch (error: unknown) {
       // FIXED: Explicit unknown type
@@ -335,7 +333,6 @@ export class LearningService {
 
       const result = await this.actor.submitQuiz(
         toBigInt(courseId),
-        toBigInt(moduleId),
         convertedAnswers
       );
 
@@ -439,7 +436,7 @@ export class LearningService {
     moduleId: number
   ): Promise<{ ok: EnhancedQuizPreview } | { err: string }> {
     try {
-      const result = await this.actor.getQuizWithValidation(toBigInt(courseId), toBigInt(moduleId));
+      const result = await this.actor.getQuizWithValidation(toBigInt(courseId));
       return convertBigIntToString(result);
     } catch (error: unknown) {
       // FIXED: Explicit unknown type
@@ -471,7 +468,7 @@ export class LearningService {
    */
   async getQuizResults(courseId: number): Promise<EnhancedQuizResult[]> {
     try {
-      const result = await this.actor.getMyQuizResults(toBigInt(courseId));
+      const result = await this.actor.getMyBestQuizResult(toBigInt(courseId));
       return result ? convertBigIntToString(result) : [];
     } catch (error: unknown) {
       // FIXED: Explicit unknown type
