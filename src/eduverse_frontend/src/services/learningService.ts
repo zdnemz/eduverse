@@ -262,7 +262,7 @@ export class LearningService {
   }
 
   /**
-   * Submit quiz answers
+   * Submit quiz answers - FIXED: Now includes moduleId parameter
    */
   async submitQuiz(
     courseId: number,
@@ -275,6 +275,7 @@ export class LearningService {
         selectedAnswer: toBigInt(answer.selectedAnswer),
       }));
 
+      // FIXED: Now passing all 3 required parameters
       const result = await this.actor.submitQuiz(
         toBigInt(courseId),
         toBigInt(moduleId),
@@ -285,19 +286,6 @@ export class LearningService {
     } catch (error) {
       console.error('Error submitting quiz:', error);
       return { err: 'Failed to submit quiz' };
-    }
-  }
-
-  /**
-   * Get all quizzes
-   */
-  async getAllQuizzes(): Promise<EnhancedCourseQuiz[]> {
-    try {
-      const result = await this.actor.getAllQuizzes();
-      return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting all quizzes:', error);
-      return [];
     }
   }
 
@@ -629,7 +617,7 @@ export const useQuizManager = (learningService: LearningService | null, courseId
     }
   }, [learningService, courseId]);
 
-  // Submit quiz
+  // Submit quiz - FIXED: Now properly passes moduleId
   const submitQuiz = useCallback(
     async (moduleId: number, answers: { questionId: number; selectedAnswer: number }[]) => {
       if (!learningService) return null;
@@ -637,8 +625,9 @@ export const useQuizManager = (learningService: LearningService | null, courseId
       try {
         setIsLoading(true);
         setError(null);
-        console.log('📤 Submitting quiz answers...');
+        console.log(`📤 Submitting quiz answers for module ${moduleId}...`);
 
+        // FIXED: Now properly passes moduleId to the submitQuiz method
         const result = await learningService.submitQuiz(courseId, moduleId, answers);
 
         if ('ok' in result) {
