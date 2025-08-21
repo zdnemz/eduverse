@@ -1,4 +1,4 @@
-// Enhanced LearningService.ts - FIXED TO MATCH BACKEND FUNCTIONS
+// Enhanced LearningService.ts - FIXED TypeScript Errors
 
 import { useState, useEffect, useCallback } from 'react';
 import { ActorSubclass } from '@dfinity/agent';
@@ -51,9 +51,25 @@ export interface CourseCompletionStatus {
   isComplete: boolean;
 }
 
-// Helper to convert number to BigInt
-const toBigInt = (value: number): bigint => {
+// Helper to convert number to BigInt - FIXED with validation
+const toBigInt = (value: number | undefined | null): bigint => {
+  if (value === undefined || value === null || isNaN(value)) {
+    throw new Error(`Invalid value for BigInt conversion: ${value}`);
+  }
   return BigInt(value);
+};
+
+// Safe toBigInt for optional values
+const safeIntToBigInt = (value: number | undefined | null, fallback: number = 0): bigint => {
+  try {
+    if (value === undefined || value === null || isNaN(value)) {
+      return BigInt(fallback);
+    }
+    return BigInt(value);
+  } catch (error) {
+    console.warn(`Failed to convert ${value} to BigInt, using fallback ${fallback}`);
+    return BigInt(fallback);
+  }
 };
 
 // Frontend interface matching backend types
@@ -63,6 +79,7 @@ export interface EnhancedCourseQuiz
   timeLimit: number;
   passingScore: number;
   questions: EnhancedQuizQuestion[];
+  isFinalQuiz?: boolean; // NEW: Flag for final quiz
 }
 
 export interface EnhancedQuizQuestion extends Omit<QuizQuestion, 'questionId' | 'correctAnswer'> {
@@ -101,8 +118,10 @@ export class LearningService {
     try {
       const result = await this.actor.updateUser(name, email ? [email] : []);
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error updating user:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error updating user:', errorMessage);
       return { err: 'Failed to update user' };
     }
   }
@@ -114,8 +133,10 @@ export class LearningService {
     try {
       const result = await this.actor.getMyProfile();
       return result ? convertBigIntToString(result) : null;
-    } catch (error) {
-      console.error('Error getting profile:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting profile:', errorMessage);
       return null;
     }
   }
@@ -129,8 +150,10 @@ export class LearningService {
     try {
       const result = await this.actor.getCourses();
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting courses:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting courses:', errorMessage);
       return [];
     }
   }
@@ -142,8 +165,10 @@ export class LearningService {
     try {
       const result = await this.actor.getCoursesByCategory(category);
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting courses by category:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting courses by category:', errorMessage);
       return [];
     }
   }
@@ -155,8 +180,10 @@ export class LearningService {
     try {
       const result = await this.actor.searchCourses(searchQuery);
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error searching courses:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error searching courses:', errorMessage);
       return [];
     }
   }
@@ -168,8 +195,10 @@ export class LearningService {
     try {
       const result = await this.actor.getCourseById(toBigInt(courseId));
       return result ? convertBigIntToString(result) : null;
-    } catch (error) {
-      console.error('Error getting course by ID:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting course by ID:', errorMessage);
       return null;
     }
   }
@@ -181,8 +210,10 @@ export class LearningService {
     try {
       const result = await this.actor.getCategories();
       return result || [];
-    } catch (error) {
-      console.error('Error getting categories:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting categories:', errorMessage);
       return [];
     }
   }
@@ -196,8 +227,10 @@ export class LearningService {
     try {
       const result = await this.actor.enrollCourse(toBigInt(courseId));
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error enrolling in course:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error enrolling in course:', errorMessage);
       return { err: 'Failed to enroll in course' };
     }
   }
@@ -209,8 +242,10 @@ export class LearningService {
     try {
       const result = await this.actor.getMyEnrollments();
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting enrollments:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting enrollments:', errorMessage);
       return [];
     }
   }
@@ -224,8 +259,10 @@ export class LearningService {
     try {
       const result = await this.actor.getCourseMaterials(toBigInt(courseId));
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting course materials:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting course materials:', errorMessage);
       return { err: 'Failed to get course materials' };
     }
   }
@@ -237,8 +274,10 @@ export class LearningService {
     try {
       const result = await this.actor.getModule(toBigInt(courseId), toBigInt(moduleId));
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting module:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting module:', errorMessage);
       return { err: 'Failed to get module' };
     }
   }
@@ -255,14 +294,16 @@ export class LearningService {
     try {
       const result = await this.actor.getQuiz(toBigInt(courseId), toBigInt(moduleId));
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting quiz:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting quiz:', errorMessage);
       return { err: 'Failed to get quiz' };
     }
   }
 
   /**
-   * Submit quiz answers - FIXED: Now includes moduleId parameter
+   * Submit quiz answers - ORIGINAL: For module quizzes
    */
   async submitQuiz(
     courseId: number,
@@ -270,12 +311,28 @@ export class LearningService {
     answers: { questionId: number; selectedAnswer: number }[]
   ): Promise<{ ok: EnhancedQuizResult } | { err: string }> {
     try {
+      console.log('📤 Submitting module quiz:', {
+        courseId,
+        moduleId,
+        answersCount: answers.length,
+      });
+
+      // Validate inputs before conversion
+      if (!courseId || courseId <= 0) {
+        throw new Error('Invalid courseId');
+      }
+      if (!moduleId || moduleId <= 0) {
+        throw new Error('Invalid moduleId');
+      }
+      if (!answers || answers.length === 0) {
+        throw new Error('No answers provided');
+      }
+
       const convertedAnswers = answers.map((answer) => ({
         questionId: toBigInt(answer.questionId),
         selectedAnswer: toBigInt(answer.selectedAnswer),
       }));
 
-      // FIXED: Now passing all 3 required parameters
       const result = await this.actor.submitQuiz(
         toBigInt(courseId),
         toBigInt(moduleId),
@@ -283,9 +340,50 @@ export class LearningService {
       );
 
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error submitting quiz:', error);
-      return { err: 'Failed to submit quiz' };
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error submitting quiz:', errorMessage);
+      return { err: `Failed to submit quiz: ${errorMessage}` };
+    }
+  }
+
+  /**
+   * Submit final quiz - FIXED: Uses existing submitQuiz method since backend doesn't have submitFinalQuiz
+   */
+  async submitFinalQuiz(
+    courseId: number,
+    answers: { questionId: number; selectedAnswer: number }[]
+  ): Promise<{ ok: EnhancedQuizResult } | { err: string }> {
+    try {
+      console.log('🎯 Submitting final quiz:', { courseId, answersCount: answers.length });
+
+      // Validate inputs
+      if (!courseId || courseId <= 0) {
+        throw new Error('Invalid courseId');
+      }
+      if (!answers || answers.length === 0) {
+        throw new Error('No answers provided');
+      }
+
+      // FIXED: Since backend doesn't have submitFinalQuiz, use submitQuiz with last module
+      console.log('⚠️ Using submitQuiz method for final quiz (backend compatibility)');
+
+      // Get the last module ID as fallback
+      const materialsResult = await this.getCourseMaterials(courseId);
+      let fallbackModuleId = 1; // Default fallback
+
+      if ('ok' in materialsResult && materialsResult.ok.modules.length > 0) {
+        const lastModule = materialsResult.ok.modules[materialsResult.ok.modules.length - 1];
+        fallbackModuleId = Number(lastModule.moduleId);
+      }
+
+      return this.submitQuiz(courseId, fallbackModuleId, answers);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error submitting final quiz:', errorMessage);
+      return { err: `Failed to submit final quiz: ${errorMessage}` };
     }
   }
 
@@ -296,8 +394,10 @@ export class LearningService {
     try {
       const result = await this.actor.getQuizPreview(toBigInt(courseId));
       return result ? convertBigIntToString(result) : null;
-    } catch (error) {
-      console.error('Error getting quiz preview:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting quiz preview:', errorMessage);
       return null;
     }
   }
@@ -323,8 +423,10 @@ export class LearningService {
 
       const result = await this.actor.validateAnswers(convertedAnswers, convertedQuestions);
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error validating answers:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error validating answers:', errorMessage);
       return { err: 'Failed to validate answers' };
     }
   }
@@ -339,8 +441,10 @@ export class LearningService {
     try {
       const result = await this.actor.getQuizWithValidation(toBigInt(courseId), toBigInt(moduleId));
       return convertBigIntToString(result);
-    } catch (error) {
-      console.error('Error getting quiz with validation:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting quiz with validation:', errorMessage);
       return { err: 'Failed to get quiz with validation' };
     }
   }
@@ -354,8 +458,10 @@ export class LearningService {
     try {
       const result = await this.actor.getMyProgress(toBigInt(courseId));
       return result ? convertBigIntToString(result) : null;
-    } catch (error) {
-      console.error('Error getting user progress:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting user progress:', errorMessage);
       return null;
     }
   }
@@ -367,8 +473,10 @@ export class LearningService {
     try {
       const result = await this.actor.getMyQuizResults(toBigInt(courseId));
       return result ? convertBigIntToString(result) : [];
-    } catch (error) {
-      console.error('Error getting quiz results:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting quiz results:', errorMessage);
       return [];
     }
   }
@@ -382,8 +490,10 @@ export class LearningService {
     try {
       const result = await this.actor.getMyCertificates();
       return result ? convertBigIntToString(result) : [];
-    } catch (error) {
-      console.error('Error getting user certificates:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting user certificates:', errorMessage);
       return [];
     }
   }
@@ -395,8 +505,10 @@ export class LearningService {
     try {
       const result = await this.actor.getCertificate(toBigInt(tokenId));
       return result ? convertBigIntToString(result) : null;
-    } catch (error) {
-      console.error('Error getting certificate:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting certificate:', errorMessage);
       return null;
     }
   }
@@ -410,13 +522,15 @@ export class LearningService {
     try {
       const result = await this.actor.getCourseStats(toBigInt(courseId));
       return result ? convertBigIntToString(result) : null;
-    } catch (error) {
-      console.error('Error getting course stats:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error getting course stats:', errorMessage);
       return null;
     }
   }
 
-  // ===== CONVENIENCE METHODS =====
+  // ===== ENHANCED FINAL QUIZ METHODS =====
 
   /**
    * Check if user can take final quiz
@@ -437,26 +551,35 @@ export class LearningService {
 
       // Can take final quiz if all modules are completed
       return completedModules >= totalModules;
-    } catch (error) {
-      console.error('Error checking final quiz availability:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error checking final quiz availability:', errorMessage);
       return false;
     }
   }
 
   /**
-   * Get final quiz (assuming it's the last module's quiz)
+   * Get final quiz - FIXED: Uses existing getQuiz method since backend doesn't have getFinalQuiz
    */
   async getFinalQuiz(courseId: number): Promise<EnhancedCourseQuiz | null> {
     try {
-      // Get course materials to find the last module
+      console.log(`🎯 Getting final quiz for course ${courseId}`);
+
+      // FIXED: Since backend doesn't have getFinalQuiz method, use getQuiz with last module
+      console.log('ℹ️ Using getQuiz method for final quiz (backend compatibility)');
+
+      // Get quiz for last module (fallback)
       const materialsResult = await this.getCourseMaterials(courseId);
 
       if (!('ok' in materialsResult)) {
+        console.log('❌ Could not get course materials');
         return null;
       }
 
       const materials = materialsResult.ok;
       if (materials.modules.length === 0) {
+        console.log('⚠️ No modules found in course');
         return null;
       }
 
@@ -465,12 +588,18 @@ export class LearningService {
       const quizResult = await this.getQuiz(courseId, Number(lastModule.moduleId));
 
       if ('ok' in quizResult) {
-        return quizResult.ok;
+        const quiz = quizResult.ok;
+        quiz.isFinalQuiz = true; // Mark as final quiz
+        console.log('✅ Final quiz loaded from last module:', quiz.title);
+        return quiz;
       }
 
+      console.log('❌ No quiz found for last module');
       return null;
-    } catch (error) {
-      console.error('Error getting final quiz:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error getting final quiz:', errorMessage);
       return null;
     }
   }
@@ -517,7 +646,8 @@ export class LearningService {
         try {
           const certificates = await this.getUserCertificates();
           certificate = certificates.find((cert) => Number(cert.courseId) === courseId) || null;
-        } catch (error) {
+        } catch (error: unknown) {
+          // FIXED: Explicit unknown type
           console.log('No certificate found yet');
         }
       }
@@ -528,8 +658,10 @@ export class LearningService {
         hasQuizPassed,
         isComplete,
       };
-    } catch (error) {
-      console.error('❌ Error checking course completion:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error checking course completion:', errorMessage);
       return {
         certificate: null,
         canGetCertificate: false,
@@ -549,7 +681,7 @@ export const useLearningService = (actor: ActorSubclass<_SERVICE> | null) => {
 // ====== ENHANCED QUIZ HOOKS ======
 
 /**
- * Hook for managing quiz state and operations
+ * Hook for managing quiz state and operations - UPDATED for final quiz support
  */
 export const useQuizManager = (learningService: LearningService | null, courseId: number) => {
   const [currentQuiz, setCurrentQuiz] = useState<EnhancedCourseQuiz | null>(null);
@@ -574,12 +706,14 @@ export const useQuizManager = (learningService: LearningService | null, courseId
           console.log('✅ Quiz loaded:', result.ok.title);
           return result.ok;
         } else {
-          console.log('ℹ️  No quiz found for this module:', result.err);
+          console.log('ℹ️ No quiz found for this module:', result.err);
           setCurrentQuiz(null);
           return null;
         }
-      } catch (error) {
-        console.error('❌ Error loading quiz:', error);
+      } catch (error: unknown) {
+        // FIXED: Explicit unknown type
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('❌ Error loading quiz:', errorMessage);
         setError('Failed to load quiz');
         return null;
       } finally {
@@ -604,12 +738,14 @@ export const useQuizManager = (learningService: LearningService | null, courseId
       if (quiz) {
         console.log('✅ Final quiz loaded:', quiz.title);
       } else {
-        console.log('⚠️  No final quiz available');
+        console.log('⚠️ No final quiz available');
       }
 
       return quiz;
-    } catch (error) {
-      console.error('❌ Error loading final quiz:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error loading final quiz:', errorMessage);
       setError('Failed to load final quiz');
       return null;
     } finally {
@@ -617,38 +753,59 @@ export const useQuizManager = (learningService: LearningService | null, courseId
     }
   }, [learningService, courseId]);
 
-  // Submit quiz - FIXED: Now properly passes moduleId
+  // Submit quiz - UPDATED: Now handles both regular and final quiz
   const submitQuiz = useCallback(
-    async (moduleId: number, answers: { questionId: number; selectedAnswer: number }[]) => {
+    async (
+      moduleId: number | undefined,
+      answers: { questionId: number; selectedAnswer: number }[]
+    ) => {
       if (!learningService) return null;
 
       try {
         setIsLoading(true);
         setError(null);
-        console.log(`📤 Submitting quiz answers for module ${moduleId}...`);
 
-        // FIXED: Now properly passes moduleId to the submitQuiz method
-        const result = await learningService.submitQuiz(courseId, moduleId, answers);
+        // Determine if this is a final quiz submission
+        const isFinalQuiz = currentQuiz?.isFinalQuiz || moduleId === undefined || moduleId === null;
 
-        if ('ok' in result) {
-          console.log('✅ Quiz submitted successfully:', result.ok);
-          // Refresh quiz results
-          await refreshQuizResults();
-          return result.ok;
+        if (isFinalQuiz) {
+          console.log('🎯 Submitting final quiz...');
+          const result = await learningService.submitFinalQuiz(courseId, answers);
+
+          if ('ok' in result) {
+            console.log('✅ Final quiz submitted successfully:', result.ok);
+            await refreshQuizResults();
+            return result.ok;
+          } else {
+            console.error('❌ Final quiz submission failed:', result.err);
+            setError(result.err);
+            return null;
+          }
         } else {
-          console.error('❌ Quiz submission failed:', result.err);
-          setError(result.err);
-          return null;
+          console.log(`📤 Submitting module quiz for module ${moduleId}...`);
+          const result = await learningService.submitQuiz(courseId, moduleId, answers);
+
+          if ('ok' in result) {
+            console.log('✅ Module quiz submitted successfully:', result.ok);
+            await refreshQuizResults();
+            return result.ok;
+          } else {
+            console.error('❌ Module quiz submission failed:', result.err);
+            setError(result.err);
+            return null;
+          }
         }
-      } catch (error) {
-        console.error('❌ Error submitting quiz:', error);
-        setError('Failed to submit quiz');
+      } catch (error: unknown) {
+        // FIXED: Explicit unknown type
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('❌ Error submitting quiz:', errorMessage);
+        setError(`Failed to submit quiz: ${errorMessage}`);
         return null;
       } finally {
         setIsLoading(false);
       }
     },
-    [learningService, courseId]
+    [learningService, courseId, currentQuiz]
   );
 
   // Refresh quiz results
@@ -658,8 +815,10 @@ export const useQuizManager = (learningService: LearningService | null, courseId
     try {
       const results = await learningService.getQuizResults(courseId);
       setQuizResults(results);
-    } catch (error) {
-      console.error('❌ Error refreshing quiz results:', error);
+    } catch (error: unknown) {
+      // FIXED: Explicit unknown type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error refreshing quiz results:', errorMessage);
     }
   }, [learningService, courseId]);
 
@@ -678,6 +837,7 @@ export const useQuizManager = (learningService: LearningService | null, courseId
     submitQuiz,
     refreshQuizResults,
     clearCurrentQuiz: () => setCurrentQuiz(null),
+    isFinalQuiz: () => currentQuiz?.isFinalQuiz === true,
     getQuizResult: (moduleId?: number) => {
       if (moduleId !== undefined) {
         return quizResults.find((result) => result.courseId === courseId) || null;

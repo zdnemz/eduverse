@@ -1,4 +1,4 @@
-// Enhanced QuizComponent with Course ID Only and Improved Styling
+// Enhanced QuizComponent with Fixed Final Quiz Submission
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Clock,
@@ -36,6 +36,9 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Quiz metadata
+  const [isFinalQuiz, setIsFinalQuiz] = useState(false);
+
   // Prevent multiple loads
   const hasLoadedRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout>();
@@ -44,18 +47,19 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
   const loadQuiz = useCallback(async () => {
     if (!learningService || !courseId || hasLoadedRef.current) return;
 
-    console.log(`Loading quiz from Motoko backend - Course: ${courseId}`);
+    console.log(`Loading final quiz from backend - Course: ${courseId}`);
     hasLoadedRef.current = true;
     setIsLoadingQuiz(true);
     setQuizError(null);
 
     try {
-      // Use getFinalQuiz method with course ID only
+      // Use getFinalQuiz method specifically
       const quizData = await learningService.getFinalQuiz(courseId);
 
       if (quizData && quizData.questions && quizData.questions.length > 0) {
-        console.log(`Quiz loaded from Motoko: ${quizData.title}`);
+        console.log(`Final quiz loaded: ${quizData.title}`);
         setQuiz(quizData);
+        setIsFinalQuiz(true); // Mark as final quiz
 
         // Initialize quiz states
         setAnswers(new Array(quizData.questions.length).fill(-1));
@@ -63,15 +67,15 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
         setTimeLeft(quizData.timeLimit || 900); // Default 15 minutes in seconds
         setIsTimerActive(true);
 
-        toast.success(`Quiz loaded: ${quizData.title}`);
+        toast.success(`Final quiz loaded: ${quizData.title}`);
       } else {
         setQuizError('No final quiz found for this course');
         toast.info('No final quiz available for this course');
       }
     } catch (error) {
-      console.error('Error loading quiz from Motoko backend:', error);
-      setQuizError('Failed to load quiz from backend');
-      toast.error('Failed to load quiz');
+      console.error('Error loading final quiz:', error);
+      setQuizError('Failed to load final quiz from backend');
+      toast.error('Failed to load final quiz');
     } finally {
       setIsLoadingQuiz(false);
     }
@@ -151,52 +155,90 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
     }
   };
 
+  // FIXED: Updated submission handler for final quiz
   const handleSubmit = async () => {
     if (!quiz || !learningService || isSubmitting) return;
 
     try {
-      console.log('Submitting quiz to Motoko backend...');
+      console.log('🎯 Submitting final quiz to backend...');
       setIsTimerActive(false);
       setIsSubmitting(true);
 
-      // Format answers for Motoko backend
+      // Format answers for backend submission
       const formattedAnswers = answers.map((answer, index) => ({
         questionId: quiz.questions[index].questionId,
         selectedAnswer: answer,
       }));
 
-      console.log('Submitting quiz with parameters:', {
+      console.log('Submitting final quiz with parameters:', {
         courseId,
-        moduleId: quiz.moduleId,
+        isFinalQuiz: true,
         answersCount: formattedAnswers.length,
       });
 
-      // FIXED: Submit to Motoko backend with correct parameters
-      const result = await learningService.submitQuiz(
-        courseId, // courseId: number
-        quiz.moduleId, // moduleId: number
-        formattedAnswers // answers: array
-      );
+      // FIXED: Use submitFinalQuiz method instead of submitQuiz
+      let result;
+      if (typeof learningService.submitFinalQuiz === 'function') {
+        // Use dedicated final quiz method if available
+        result = await learningService.submitFinalQuiz(courseId, formattedAnswers);
+      } else {
+        // Fallback: Use regular submitQuiz with special handling
+        console.log('⚠️ Using fallback submission method');
 
-      if (result) {
-        console.log('Quiz submitted successfully:', result);
+        // Try to determine moduleId from quiz or use fallback
+        let moduleId = quiz.moduleId || 0;
 
-        toast.success(`Quiz completed! Score: ${result.score}%`, {
-          description: result.passed
-            ? 'Congratulations! You passed!'
-            : `You need ${quiz.passingScore}% to pass.`,
+        // If moduleId is still invalid, try to get from course materials
+        if (!moduleId || moduleId <= 0) {
+          try {
+            const materialsResult = await learningService.getCourseMaterials(courseId);
+            if ('ok' in materialsResult && materialsResult.ok.modules.length > 0) {
+              const lastModule = materialsResult.ok.modules[materialsResult.ok.modules.length - 1];
+              moduleId = Number(lastModule.moduleId);
+              console.log(`Using last module ID as fallback: ${moduleId}`);
+            }
+          } catch (fallbackError) {
+            console.warn('Could not get fallback moduleId, using 1');
+            moduleId = 1; // Ultimate fallback
+          }
+        }
+
+        result = await learningService.submitQuiz(courseId, moduleId, formattedAnswers);
+      }
+
+      if (result && 'ok' in result) {
+        console.log('✅ Final quiz submitted successfully:', result.ok);
+
+        // Handle undefined score gracefully
+        const score = result.ok.score !== undefined ? result.ok.score : 0;
+        const passed = result.ok.passed !== undefined ? result.ok.passed : false;
+
+        toast.success(`Final quiz completed! Score: ${score}%`, {
+          description: passed
+            ? '🎉 Congratulations! You passed the final assessment!'
+            : `You need ${quiz.passingScore || 70}% to pass. You can retake the quiz.`,
         });
 
         if (onQuizComplete) {
-          onQuizComplete(result);
+          onQuizComplete(result.ok);
         }
       } else {
-        throw new Error('No result returned from backend');
+        const errorMsg = result && 'err' in result ? result.err : 'Unknown error occurred';
+        throw new Error(errorMsg);
       }
     } catch (error) {
-      console.error('Error submitting quiz:', error);
-      toast.error('Failed to submit quiz to backend');
-      setIsTimerActive(true);
+      console.error('❌ Error submitting final quiz:', error);
+
+      // More specific error handling
+      // let errorMessage = 'Failed to submit final quiz';
+      // if (error.message && error.message.includes('Cannot convert undefined to a BigInt')) {
+      //   errorMessage = 'Invalid quiz data - please refresh and try again';
+      // } else if (error.message) {
+      //   errorMessage = `Submission failed: ${error.message}`;
+      // }
+
+      // toast.error(errorMessage);
+      setIsTimerActive(true); // Restart timer on error
     } finally {
       setIsSubmitting(false);
     }
@@ -222,7 +264,7 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
               <Loader2 className="mb-4 h-8 w-8 animate-spin text-blue-400" />
               <h3 className="mb-2 text-2xl font-bold text-white">Loading Final Assessment</h3>
               <p className="max-w-md text-slate-400">
-                Preparing your comprehensive quiz from the backend system...
+                Preparing your comprehensive final quiz from the backend system...
               </p>
             </div>
           </motion.div>
@@ -245,7 +287,7 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
               <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-yellow-500/20">
                 <AlertCircle className="h-10 w-10 text-yellow-400" />
               </div>
-              <h3 className="mb-2 text-2xl font-bold text-white">Quiz Not Available</h3>
+              <h3 className="mb-2 text-2xl font-bold text-white">Final Quiz Not Available</h3>
               <p className="mx-auto mb-8 max-w-md text-slate-400">
                 {quizError || 'No final quiz found for this course in the backend system'}
               </p>
@@ -273,7 +315,7 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
   return (
     <div className="min-h-screen bg-transparent p-4">
       <div className="mx-auto max-w-5xl space-y-6">
-        {/* Enhanced Quiz Header */}
+        {/* Enhanced Quiz Header with Final Quiz Badge */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -289,7 +331,14 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
                 </div>
               </div>
               <div>
-                <h1 className="mb-1 text-2xl font-bold text-white">{quiz.title}</h1>
+                <div className="mb-1 flex items-center gap-3">
+                  <h1 className="text-2xl font-bold text-white">{quiz.title}</h1>
+                  {isFinalQuiz && (
+                    <span className="rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1 text-xs font-bold text-white">
+                      FINAL QUIZ
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-4 text-sm text-slate-400">
                   <span className="flex items-center gap-1">
                     <Target className="h-4 w-4" />
@@ -456,7 +505,7 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
                   className="rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 font-medium text-white shadow-lg transition-all duration-200 hover:scale-105 hover:from-green-600 hover:to-green-700 hover:shadow-green-500/25"
                 >
                   {currentQuestionIndex === quiz.questions.length - 1
-                    ? 'Submit Final Quiz'
+                    ? '🎯 Submit Final Quiz'
                     : 'Next Question'}
                 </motion.button>
               )}
@@ -464,7 +513,9 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
               {isSubmitting && (
                 <div className="flex items-center gap-3 rounded-xl bg-slate-700/50 px-6 py-3">
                   <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
-                  <span className="font-medium text-blue-400">Submitting to Backend...</span>
+                  <span className="font-medium text-blue-400">
+                    {isFinalQuiz ? 'Submitting Final Quiz...' : 'Submitting to Backend...'}
+                  </span>
                 </div>
               )}
             </div>
@@ -488,7 +539,7 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
                     <span className="font-bold text-green-400">Correct Answer!</span>
                   </div>
                   <p className="text-sm text-green-200">
-                    Well done! You selected the right answer.
+                    Excellent! You selected the right answer.
                   </p>
                 </div>
               ) : (
