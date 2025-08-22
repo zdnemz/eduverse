@@ -168,6 +168,46 @@ persistent actor EduverseBackend {
     }
   };
 
+  public shared({ caller }) func completeModule(courseId: Nat, moduleId: Nat): async Result.Result<Text, Text> {
+    if (not isEnrolled(caller, courseId)) {
+      return #err("You must enroll in this course first");
+    };
+    
+    let progressKey = getUserProgressKey(caller, courseId);
+    switch (userProgress.get(progressKey)) {
+      case null { #err("Progress not found") };
+      case (?progress) {
+        // Check if module already completed
+        let alreadyCompleted = Array.find<Nat>(progress.completedModules, func(id) = id == moduleId) != null;
+        
+        if (alreadyCompleted) {
+          return #ok("Module already completed");
+        };
+        
+        // Add module to completed list
+        let updatedModules = Array.append(progress.completedModules, [moduleId]);
+        
+        // Calculate new overall progress
+        let totalModules = switch (Array.find<Types.CourseMaterial>(Materials.materials, func(m) = m.courseId == courseId)) {
+          case null { 1 }; // Fallback to avoid division by zero
+          case (?material) { material.modules.size() };
+        };
+        
+        let newOverallProgress = (updatedModules.size() * 100) / totalModules;
+        
+        let updatedProgress = {
+          progress with 
+          completedModules = updatedModules;
+          overallProgress = newOverallProgress;
+          lastAccessed = Time.now();
+        };
+
+        userProgress.put(progressKey, updatedProgress);
+        #ok("Module completed successfully")
+      };
+    };
+  };
+
   public query({ caller }) func getModule(courseId: Nat, moduleId: Nat): async Result.Result<Types.Module, Text> {
     if (not isEnrolled(caller, courseId)) {
       return #err("You must enroll in this course first");
@@ -179,21 +219,42 @@ persistent actor EduverseBackend {
         switch (Array.find<Types.Module>(material.modules, func(mod) = mod.moduleId == moduleId)) {
           case null { #err("Module not found") };
           case (?foundModule) { 
-            // Update last accessed time
+            // FIXED: Auto-mark module as completed when accessed
             let progressKey = getUserProgressKey(caller, courseId);
             switch (userProgress.get(progressKey)) {
               case null { };
               case (?progress) {
-                let updatedProgress = {
-                  progress with lastAccessed = Time.now();
+                // Check if module not already completed
+                let alreadyCompleted = Array.find<Nat>(progress.completedModules, func(id) = id == moduleId) != null;
+                
+                if (not alreadyCompleted) {
+                  // Add module to completed list
+                  let updatedModules = Array.append(progress.completedModules, [moduleId]);
+                  
+                  // Calculate new overall progress
+                  let totalModules = material.modules.size();
+                  let newOverallProgress = (updatedModules.size() * 100) / totalModules;
+                  
+                  let updatedProgress = {
+                    progress with 
+                    completedModules = updatedModules;
+                    overallProgress = newOverallProgress;
+                    lastAccessed = Time.now();
+                  };
+                  userProgress.put(progressKey, updatedProgress);
+                } else {
+                  // Just update last accessed time
+                  let updatedProgress = {
+                    progress with lastAccessed = Time.now();
+                  };
+                  userProgress.put(progressKey, updatedProgress);
                 };
-                userProgress.put(progressKey, updatedProgress);
               };
             };
             #ok(foundModule) 
           };
         };
-      };
+      }
     }
   };
 
@@ -249,29 +310,53 @@ persistent actor EduverseBackend {
         let resultKey = getUserProgressKey(caller, courseId);
         quizResults.put(resultKey, [result]);
         
-        // Update user progress if passed
-        if (passed) {
-          switch (userProgress.get(resultKey)) {
-            case null { };
-            case (?progress) {
-              // Mark semua module sebagai completed jika quiz final passed
-              let allModuleIds = switch (Array.find<Types.CourseMaterial>(Materials.materials, func(m) = m.courseId == courseId)) {
-                case null { [] };
-                case (?material) { Array.map<Types.Module, Nat>(material.modules, func(mod) = mod.moduleId) };
-              };
-              
-              let _totalModules = allModuleIds.size();
-              
-              let updatedProgress = {
-                progress with 
-                completedModules = allModuleIds; // Mark all modules as completed
-                quizResult = ?result;
-                overallProgress = 100; // Course completed
-                lastAccessed = Time.now();
-              };
-              userProgress.put(resultKey, updatedProgress);
-              
-              // Issue certificate
+        // FIXED: Update progress without overriding existing completed modules
+        switch (userProgress.get(resultKey)) {
+          case null { };
+          case (?progress) {
+            // Get all possible module IDs for this course
+            let allModuleIds = switch (Array.find<Types.CourseMaterial>(Materials.materials, func(m) = m.courseId == courseId)) {
+              case null { [] };
+              case (?material) { Array.map<Types.Module, Nat>(material.modules, func(mod) = mod.moduleId) };
+            };
+            
+            // FIXED: If quiz passed, ensure all modules are marked as completed
+            // But keep existing completed modules even if quiz not passed
+            let finalCompletedModules = if (passed) {
+              // Merge existing completed modules with all modules (in case some were missed)
+              let combined = Array.append(progress.completedModules, allModuleIds);
+              // Remove duplicates
+              Array.foldLeft<Nat, [Nat]>(combined, [], func(acc, moduleId) {
+                if (Array.find<Nat>(acc, func(id) = id == moduleId) == null) {
+                  Array.append(acc, [moduleId])
+                } else {
+                  acc
+                }
+              })
+            } else {
+              // Keep existing completed modules even if quiz failed
+              progress.completedModules
+            };
+            
+            let newOverallProgress = if (passed) { 100 } else {
+              // Calculate based on completed modules
+              let totalModules = allModuleIds.size();
+              if (totalModules == 0) { 0 } else {
+                (finalCompletedModules.size() * 100) / totalModules
+              }
+            };
+            
+            let updatedProgress = {
+              progress with 
+              completedModules = finalCompletedModules;
+              quizResult = ?result;
+              overallProgress = newOverallProgress;
+              lastAccessed = Time.now();
+            };
+            userProgress.put(resultKey, updatedProgress);
+            
+            // Issue certificate only if passed
+            if (passed) {
               ignore await issueCertificate(caller, courseId);
             };
           };
@@ -293,11 +378,145 @@ persistent actor EduverseBackend {
   public query func validateAnswers(answers: [Types.UserAnswer], quizQuestions: [Types.QuizQuestion]): async Result.Result<Bool, Text> {
     Quizzes.validateAnswers(answers, quizQuestions)
   };
+  
 
   // === PROGRESS TRACKING ===
   public query({ caller }) func getMyProgress(courseId: Nat): async ?Types.UserProgress {
     let progressKey = getUserProgressKey(caller, courseId);
-    userProgress.get(progressKey)
+    switch (userProgress.get(progressKey)) {
+      case null { 
+        // Return default progress if none exists
+        ?{
+          userId = caller;
+          courseId = courseId;
+          completedModules = [];
+          quizResult = null;
+          overallProgress = 0;
+          lastAccessed = Time.now();
+        }
+      };
+      case (?progress) { ?progress };
+    }
+  };
+
+  public query({ caller }) func getCourseCompletionStatus(courseId: Nat): async ?{
+    isEnrolled: Bool;
+    totalModules: Nat;
+    completedModules: [Nat];
+    completedModulesCount: Nat;
+    overallProgress: Nat;
+    hasQuizResult: Bool;
+    quizPassed: Bool;
+    quizScore: Nat;
+    canGetCertificate: Bool;
+  } {
+    // FIXED: Ensure user is enrolled first
+    if (not isEnrolled(caller, courseId)) {
+      return null; // Return null for non-enrolled users
+    };
+    
+    let progressKey = getUserProgressKey(caller, courseId);
+    
+    // FIXED: Get total modules with proper validation
+    let totalModules = switch (Array.find<Types.CourseMaterial>(Materials.materials, func(m) = m.courseId == courseId)) {
+      case null { 
+        // Course material not found - this shouldn't happen for valid courses
+        return null;
+      };
+      case (?material) { 
+        let moduleCount = material.modules.size();
+        if (moduleCount == 0) {
+          return null; // Invalid course with no modules
+        };
+        moduleCount
+      };
+    };
+    
+    // FIXED: Get progress with detailed validation
+    let (completedModules, _overallProgress, quizResult) = switch (userProgress.get(progressKey)) {
+      case null { 
+        // No progress found - create default
+        ([], 0, null) 
+      };
+      case (?progress) { 
+        // Validate progress data
+        let validatedModules = progress.completedModules;
+        let validatedProgress = progress.overallProgress;
+        
+        // Ensure progress consistency
+        let calculatedProgress = if (totalModules > 0) {
+          (validatedModules.size() * 100) / totalModules
+        } else { 0 };
+        
+        // Use calculated progress if stored progress seems wrong
+        let finalProgress = if (validatedProgress != calculatedProgress and validatedModules.size() > 0) {
+          calculatedProgress
+        } else {
+          validatedProgress
+        };
+        
+        (validatedModules, finalProgress, progress.quizResult) 
+      };
+    };
+    
+    // FIXED: Enhanced quiz result validation
+    let (hasQuizResult, quizPassed, quizScore) = switch (quizResult) {
+      case null { 
+        // No quiz result in progress, check quizResults storage as backup
+        let resultKey = getUserProgressKey(caller, courseId);
+        switch (quizResults.get(resultKey)) {
+          case null { (false, false, 0) };
+          case (?results) {
+            if (results.size() == 0) {
+              (false, false, 0)
+            } else {
+              // Get latest result
+              let latestResult = results[results.size() - 1];
+              (true, latestResult.passed, latestResult.score)
+            }
+          };
+        }
+      };
+      case (?result) { 
+        // Validate quiz result
+        let validScore = if (result.score > 100) { 100 } else if (result.score < 0) { 0 } else { result.score };
+        (true, result.passed, validScore) 
+      };
+    };
+    
+    // FIXED: Enhanced completion logic
+    let modulesComplete = completedModules.size() >= totalModules;
+    let _canGetCertificate = modulesComplete and quizPassed;
+    
+    // FIXED: Additional validation - if quiz passed, ensure all modules marked as completed
+    let finalCompletedModules = if (quizPassed and not modulesComplete) {
+      // Auto-complete all modules if quiz passed but modules not all marked
+      let allModuleIds = switch (Array.find<Types.CourseMaterial>(Materials.materials, func(m) = m.courseId == courseId)) {
+        case null { completedModules };
+        case (?material) { Array.map<Types.Module, Nat>(material.modules, func(mod) = mod.moduleId) };
+      };
+      allModuleIds
+    } else {
+      completedModules
+    };
+    
+    let finalCompletedCount = finalCompletedModules.size();
+    let finalOverallProgress = if (totalModules > 0) {
+      (finalCompletedCount * 100) / totalModules
+    } else { 0 };
+    
+    // FIXED: Return validated and complete status
+    ?{
+      isEnrolled = true;
+      totalModules = totalModules;
+      completedModules = finalCompletedModules;
+      completedModulesCount = finalCompletedCount;
+      overallProgress = finalOverallProgress;
+      hasQuizResult = hasQuizResult;
+      quizPassed = quizPassed;
+      quizScore = quizScore;
+      canGetCertificate = (finalCompletedCount >= totalModules) and quizPassed;
+    }
   };
 
   public query({ caller }) func getMyQuizResults(courseId: Nat): async [Types.QuizResult] {

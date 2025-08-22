@@ -1,4 +1,4 @@
-// Fixed LearningPage.tsx - Removed moduleId error and aligned with learningService
+// FIXED LearningPage.tsx - Masalah Quiz & Certificate Diselesaikan
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { getAuthClient } from '@/lib/authClient';
 import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 
-// Separated Components
+// Components (same imports)
 import LearningHeader from './components/LearningHeader';
 import CourseSidebar from './components/CourseSidebar';
 import ModuleHeader from './components/ModuleHeader';
@@ -21,7 +21,7 @@ import AccessDenied from './components/AccessDenied';
 import CertificateDisplay from './components/CertificateDisplay';
 import QuizComponent from './components/QuizComponent ';
 
-// Utilities and Services
+// Services
 import { UserStateManager, PersistentUserState, UserProfile } from './components/UserStateManager';
 import { useLoading } from '@/hooks/useLoading';
 import {
@@ -35,13 +35,13 @@ import {
   useLearningService,
   EnhancedCourseQuiz,
   EnhancedQuizResult,
+  CourseCompletionStatus,
+  BackendCompletionStatus, // Added this import
 } from '@/services/learningService';
 import { Certificate as FrontendCertificate } from '@/types/certificate';
-
-// Import backend certificate type with alias to avoid naming conflict
 import { Certificate as BackendCertificate } from 'declarations/eduverse_backend/eduverse_backend.did';
 
-// Types (aligned with learningService)
+// Types (same as before)
 interface Module {
   moduleId: number;
   title: string;
@@ -73,12 +73,11 @@ interface UserProgress {
   userId: string;
   courseId: number;
   completedModules: number[];
-  quizResults: any[];
+  quizResult: any; // Single quiz result, not array
   overallProgress: number;
   lastAccessed: number;
 }
 
-// FIXED: QuizResult interface yang kompatibel dengan CourseSidebar
 interface QuizResult {
   moduleId: number;
   score: number;
@@ -95,9 +94,7 @@ const convertBigIntToString = (obj: any): any => {
   if (typeof obj === 'bigint') return Number(obj);
   if (Array.isArray(obj)) return obj.map(convertBigIntToString);
   if (typeof obj === 'object') {
-    // Handle Principal objects specifically
     if (obj.toString && typeof obj.toString === 'function' && obj._arr) {
-      // This is likely a Principal object
       return obj.toString();
     }
     const converted: any = {};
@@ -109,33 +106,11 @@ const convertBigIntToString = (obj: any): any => {
   return obj;
 };
 
-// FIXED: Helper function untuk mengkonversi EnhancedQuizResult ke QuizResult dengan handling Principal
-const convertEnhancedQuizResultsToQuizResults = (
-  enhancedResults: EnhancedQuizResult[],
-  fallbackUserId: string
-): QuizResult[] => {
-  return enhancedResults.map((result) => ({
-    moduleId: 1, // Default moduleId karena quiz final
-    score: result.score,
-    passed: result.passed,
-    courseId: result.courseId,
-    userId:
-      typeof result.userId === 'object' && result.userId.toString
-        ? result.userId.toString()
-        : fallbackUserId,
-    completedAt: result.completedAt,
-    answers: result.answers,
-  }));
-};
-
-// FIXED: Certificate type conversion helper matching backend schema
 const convertBackendCertificate = (backendCert: BackendCertificate): FrontendCertificate => {
-  // Convert BigInt values to numbers for frontend use
   const converted = convertBigIntToString(backendCert);
-
   return {
     tokenId: Number(converted.tokenId),
-    userId: converted.userId.toString(), // Principal to string
+    userId: converted.userId.toString(),
     courseId: Number(converted.courseId),
     courseName: converted.courseName,
     completedAt: Number(converted.completedAt),
@@ -166,6 +141,8 @@ export default function LearningPage() {
   const [currentView, setCurrentView] = useState<'learning' | 'quiz' | 'certificate'>('learning');
   const [scrolled, setScrolled] = useState(false);
   const { scrollYProgress } = useScroll();
+
+  // State variables
   const [courseMaterial, setCourseMaterial] = useState<CourseMaterial | null>(null);
   const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
   const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
@@ -173,10 +150,15 @@ export default function LearningPage() {
   const [error, setError] = useState<string | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
 
-  // User Profile State
+  // User and auth states
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isInitializingUser, setIsInitializingUser] = useState(true);
+  const [userStateManager] = useState(() => UserStateManager.getInstance());
+  const [persistentUserState, setPersistentUserState] = useState<PersistentUserState | null>(null);
 
-  // Quiz and Certificate states - FIXED: Using proper QuizResult type
+  // Quiz and certificate states
   const [currentQuiz, setCurrentQuiz] = useState<EnhancedCourseQuiz | null>(null);
   const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
@@ -184,15 +166,14 @@ export default function LearningPage() {
   const [finalQuizData, setFinalQuizData] = useState<EnhancedCourseQuiz | null>(null);
   const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
 
-  // Enhanced User State Management
-  const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isInitializingUser, setIsInitializingUser] = useState(true);
-  const [userStateManager] = useState(() => UserStateManager.getInstance());
-  const [persistentUserState, setPersistentUserState] = useState<PersistentUserState | null>(null);
+  // FIXED: Use BackendCompletionStatus instead of CourseCompletionStatus for internal status
+  const [backendCompletionStatus, setBackendCompletionStatus] =
+    useState<BackendCompletionStatus | null>(null);
+  const [isCheckingCompletion, setIsCheckingCompletion] = useState(false);
+
   const learningService = useLearningService(actor);
 
-  // Enhanced Learning Progress Hook Integration
+  // Learning progress hook
   const [learningState, learningActions] = useLearningProgress(
     Number(courseId) || 0,
     courseMaterial,
@@ -200,35 +181,190 @@ export default function LearningPage() {
     currentUserId && !isInitializingUser && actor ? currentUserId : undefined
   );
 
-  // Reading progress hook for current module
+  // Reading and time tracking hooks (same as before)
   const { progress: readingProgress, updateProgress: updateReadingProgress } =
     useReadingProgressHook(
       Number(courseId) || 0,
       learningState.currentModule?.moduleId || 0,
       currentUserId && !isInitializingUser && actor && learningState.currentModule
-        ? (progress) => {
-            learningActions.updateReadingProgress(progress);
-          }
-        : () => {
-            console.log('⏳ Reading progress update skipped - user not ready');
-          }
+        ? (progress) => learningActions.updateReadingProgress(progress)
+        : () => console.log('⏳ Reading progress update skipped - user not ready')
     );
 
-  // Time tracking hook
   const { timeSpent: sessionTimeSpent } = useTimeTracking(
     Number(courseId) || 0,
     learningState.currentModule?.moduleId || 0,
     !!(currentView === 'learning' && currentUserId && !isInitializingUser && actor)
   );
 
-  // Progress statistics hook
   const { statistics: globalStatistics, refreshStatistics } = useProgressStatistics();
 
-  // User initialization
+  // FIXED: Simplified completion status checking using backend method only
+  const checkCompletionStatus = useCallback(async () => {
+    if (!actor || !courseId || isCheckingCompletion) return null;
+
+    setIsCheckingCompletion(true);
+    try {
+      console.log(`🎓 Checking completion status for course ${courseId}`);
+
+      // FIXED: Get raw response from backend
+      const rawBackendStatus = await actor.getCourseCompletionStatus(BigInt(courseId));
+
+      if (!rawBackendStatus) {
+        console.log('❌ No completion status found - user not enrolled');
+        setBackendCompletionStatus(null);
+        return null;
+      }
+
+      // FIXED: Handle both Array and Object responses
+      let convertedStatus = convertBigIntToString(rawBackendStatus);
+
+      // CRITICAL FIX: If response is Array, take first element
+      if (Array.isArray(convertedStatus)) {
+        console.log('🔧 Backend returned Array, extracting first element:', convertedStatus);
+        if (convertedStatus.length > 0) {
+          convertedStatus = convertedStatus[0];
+        } else {
+          console.log('❌ Empty array from backend');
+          setBackendCompletionStatus(null);
+          return null;
+        }
+      }
+
+      // FIXED: Validate all required fields exist
+      const requiredFields = [
+        'isEnrolled',
+        'totalModules',
+        'completedModules',
+        'completedModulesCount',
+        'overallProgress',
+        'hasQuizResult',
+        'quizPassed',
+        'quizScore',
+        'canGetCertificate',
+      ];
+
+      const missingFields = requiredFields.filter(
+        (field) => convertedStatus[field] === undefined || convertedStatus[field] === null
+      );
+
+      if (missingFields.length > 0) {
+        console.error('❌ Backend status missing fields:', missingFields, convertedStatus);
+
+        // FALLBACK: Calculate manually if backend data incomplete
+        const fallbackStatus = await calculateFallbackStatus();
+        setBackendCompletionStatus(fallbackStatus);
+        return fallbackStatus;
+      }
+
+      // SUCCESS: All fields present
+      setBackendCompletionStatus(convertedStatus);
+
+      console.log('✅ Backend Completion Status Valid:', {
+        isEnrolled: convertedStatus.isEnrolled,
+        totalModules: convertedStatus.totalModules,
+        completedModulesCount: convertedStatus.completedModulesCount,
+        quizPassed: convertedStatus.quizPassed,
+        quizScore: convertedStatus.quizScore,
+        canGetCertificate: convertedStatus.canGetCertificate,
+      });
+
+      // If can get certificate, check for existing certificate
+      if (convertedStatus.canGetCertificate) {
+        try {
+          const certificates = await actor.getMyCertificates();
+          if (certificates && certificates.length > 0) {
+            const courseIdNum = Number(courseId);
+            const courseCert = certificates.find(
+              (cert: any) => Number(cert.courseId) === courseIdNum
+            );
+            if (courseCert) {
+              console.log('📜 Certificate found:', courseCert.tokenId);
+              const convertedCert = convertBackendCertificate(courseCert);
+              setUserCertificate(convertedCert);
+            } else {
+              console.log('📜 No certificate found yet, might be generating...');
+            }
+          }
+        } catch (certError) {
+          console.warn('⚠️ Could not fetch certificates:', certError);
+        }
+      }
+
+      return convertedStatus;
+    } catch (error) {
+      console.error('❌ Error checking completion status:', error);
+
+      // FALLBACK: Try manual calculation
+      console.log('🔄 Attempting fallback completion status calculation...');
+      const fallbackStatus = await calculateFallbackStatus();
+      setBackendCompletionStatus(fallbackStatus);
+      return fallbackStatus;
+    } finally {
+      setIsCheckingCompletion(false);
+    }
+  }, [actor, courseId, isCheckingCompletion]);
+
+  const calculateFallbackStatus = async (): Promise<BackendCompletionStatus | null> => {
+    if (!actor || !courseId || !currentUserId) return null;
+
+    try {
+      console.log('🔄 Calculating fallback completion status...');
+
+      // Get user progress
+      const progressResult = await actor.getMyProgress(BigInt(courseId));
+      let progress = null;
+      if (progressResult) {
+        progress = convertBigIntToString(progressResult);
+      }
+
+      // Get course materials to know total modules
+      const materialsResult = await actor.getCourseMaterials(BigInt(courseId));
+      let totalModules = 0;
+      if ('ok' in materialsResult) {
+        const materials = convertBigIntToString(materialsResult.ok);
+        totalModules = materials.modules?.length || 0;
+      }
+
+      // Calculate values
+      const completedModules = progress?.completedModules || [];
+      const completedModulesCount = completedModules.length;
+      const overallProgress = progress?.overallProgress || 0;
+
+      // Quiz results - FIXED: Handle both single result and array
+      const hasQuizResult = !!progress?.quizResult;
+      const quizPassed = hasQuizResult ? progress.quizResult.passed || false : false;
+      const quizScore = hasQuizResult ? progress.quizResult.score || 0 : 0;
+
+      // Certificate eligibility
+      const isComplete = completedModulesCount >= totalModules && totalModules > 0;
+      const canGetCertificate = isComplete && quizPassed;
+
+      const fallbackStatus: BackendCompletionStatus = {
+        isEnrolled: true,
+        totalModules,
+        completedModules: completedModules.map((id: any) => Number(id)),
+        completedModulesCount,
+        overallProgress: Number(overallProgress),
+        hasQuizResult,
+        quizPassed,
+        quizScore: Number(quizScore),
+        canGetCertificate,
+      };
+
+      console.log('📊 Fallback completion status calculated:', fallbackStatus);
+      return fallbackStatus;
+    } catch (error) {
+      console.error('❌ Error in fallback calculation:', error);
+      return null;
+    }
+  };
+
+  // User initialization (same as before)
   useEffect(() => {
     const initializeUserAndActor = async () => {
       try {
-        console.log('🔐 Initializing Internet Identity and Actor with persistence...');
+        console.log('🔐 Initializing Internet Identity and Actor...');
         setIsInitializingUser(true);
         startLoading();
 
@@ -237,19 +373,13 @@ export default function LearningPage() {
           console.log('♻️ Restoring user session:', savedState.userId.slice(0, 20) + '...');
           setPersistentUserState(savedState);
           setCurrentUserId(savedState.userId);
-
-          if (savedState.profileData) {
-            setUserProfile(savedState.profileData);
-            console.log('👤 User profile restored:', savedState.profileData.name);
-          }
-
+          if (savedState.profileData) setUserProfile(savedState.profileData);
           userStateManager.updateLastSeen(savedState.userId);
         }
 
         const authClient = await getAuthClient();
         const identity = authClient.getIdentity();
         const principal = identity.getPrincipal();
-
         const newActor = await createActor(identity);
         setActor(newActor);
 
@@ -263,11 +393,10 @@ export default function LearningPage() {
             userName = savedState.userName;
           } else {
             userId = 'anonymous-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            userName = 'Anonymous User';
           }
         } else {
           userId = principal.toString();
-          console.log('✅ User authenticated with II, Principal:', userId.slice(0, 20) + '...');
+          console.log('✅ User authenticated:', userId.slice(0, 20) + '...');
 
           try {
             const profileResult = await newActor.getMyProfile();
@@ -275,7 +404,6 @@ export default function LearningPage() {
               const convertedProfile = convertBigIntToString(profileResult[0]);
               setUserProfile(convertedProfile);
               userName = convertedProfile.name;
-              console.log('👤 User profile loaded:', convertedProfile.name);
             }
           } catch (profileError) {
             console.warn('⚠️  Could not load user profile:', profileError);
@@ -294,13 +422,12 @@ export default function LearningPage() {
 
         userStateManager.saveUserState(newUserState);
         setPersistentUserState(newUserState);
-
-        console.log('🎯 User ID set with persistence:', userId.slice(0, 20) + '...');
       } catch (error) {
         console.error('❌ Failed to initialize user and actor:', error);
         setError('Failed to initialize connection');
         toast.error('Failed to initialize connection. Please refresh the page.');
 
+        // Fallback user ID
         const fallbackUserId =
           'fallback-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         setCurrentUserId(fallbackUserId);
@@ -311,11 +438,8 @@ export default function LearningPage() {
           principal: 'fallback',
           lastSeen: Date.now(),
         };
-
         userStateManager.saveUserState(fallbackState);
         setPersistentUserState(fallbackState);
-
-        console.log('🔧 Using fallback user ID with persistence:', fallbackUserId);
       } finally {
         setIsInitializingUser(false);
         stopLoading();
@@ -323,17 +447,15 @@ export default function LearningPage() {
     };
 
     initializeUserAndActor();
-  }, [startLoading, stopLoading, userStateManager]);
+  }, []);
 
-  // Scroll progress tracking
+  // Scroll tracking
   useEffect(() => {
-    const unsubscribe = scrollYProgress.on('change', (v) => {
-      setScrolled(v !== 0);
-    });
+    const unsubscribe = scrollYProgress.on('change', (v) => setScrolled(v !== 0));
     return () => unsubscribe();
   }, [scrollYProgress]);
 
-  // Fetch course data
+  // FIXED: Enhanced course data fetching with better progress restoration
   useEffect(() => {
     const fetchCourseData = async () => {
       if (!actor || !courseId || !currentUserId || isInitializingUser) {
@@ -351,6 +473,7 @@ export default function LearningPage() {
         const courseIdNum = BigInt(courseId);
         const service = new LearningService(actor);
 
+        // Get course info
         const courseResult = await actor.getCourseById(courseIdNum);
         const convertedCourse = convertBigIntToString(courseResult);
 
@@ -362,29 +485,15 @@ export default function LearningPage() {
 
         setCourseInfo(convertedCourse[0]);
 
+        // Check enrollment
         const enrollments = await actor.getMyEnrollments();
         const convertedEnrollments = convertBigIntToString(enrollments);
         const enrolled = convertedEnrollments.some((e: any) => e.courseId === Number(courseIdNum));
         setIsEnrolled(enrolled);
 
         if (enrolled) {
-          // Check for existing certificate first
-          const certificates = await service.getUserCertificates();
-          const courseCert = certificates.find(
-            (cert: any) => cert.courseId === Number(courseIdNum)
-          );
-
-          if (courseCert) {
-            // FIXED: Convert backend certificate to frontend type
-            const convertedCert = convertBackendCertificate(courseCert);
-            setUserCertificate(convertedCert);
-            setCurrentView('certificate');
-            stopLoading();
-            return;
-          }
-
+          // Load course materials
           const materialsResult = await actor.getCourseMaterials(courseIdNum);
-
           if ('ok' in materialsResult) {
             const convertedMaterials = convertBigIntToString(materialsResult.ok);
             const enhancedMaterials = {
@@ -393,8 +502,12 @@ export default function LearningPage() {
             };
             setCourseMaterial(enhancedMaterials);
 
-            await restoreUserProgress(courseIdNum);
-            await loadFinalQuizData(Number(courseIdNum), enhancedMaterials);
+            // FIXED: Enhanced progress restoration
+            await restoreUserProgressEnhanced(courseIdNum, service);
+            await loadFinalQuizData(Number(courseIdNum), enhancedMaterials, service);
+
+            // FIXED: Check completion status after loading materials
+            await checkCompletionStatus();
           } else {
             setError(materialsResult.err || 'Failed to load course materials');
           }
@@ -409,35 +522,71 @@ export default function LearningPage() {
     };
 
     fetchCourseData();
-  }, [actor, courseId, currentUserId, isInitializingUser, startLoading, stopLoading]);
+  }, [actor, courseId, currentUserId, isInitializingUser]);
 
-  // Helper functions
-  const restoreUserProgress = async (courseIdNum: bigint) => {
+  // FIXED: Enhanced progress restoration with better quiz result handling
+  const restoreUserProgressEnhanced = async (courseIdNum: bigint, service: LearningService) => {
     if (!actor || !currentUserId) return;
 
     try {
+      console.log('📊 Restoring user progress...');
+
+      // Get user progress from backend
       const progressResult = await actor.getMyProgress(courseIdNum);
-      if (progressResult && progressResult.length > 0) {
-        const convertedProgress = convertBigIntToString(progressResult[0]);
+      if (progressResult) {
+        const convertedProgress = convertBigIntToString(progressResult);
         setUserProgress(convertedProgress);
-      }
 
-      const quizResultsData = await actor.getMyQuizResults(courseIdNum);
-      const convertedQuizResults = convertBigIntToString(quizResultsData);
+        console.log('📈 Progress restored:', {
+          completedModules: convertedProgress.completedModules.length,
+          overallProgress: convertedProgress.overallProgress,
+          hasQuizResult: !!convertedProgress.quizResult,
+        });
 
-      if (convertedQuizResults && Array.isArray(convertedQuizResults)) {
-        const compatibleQuizResults: QuizResult[] = convertedQuizResults.map((result: any) => ({
-          moduleId: result.moduleId || 1,
-          score: result.score || 0,
-          passed: result.passed || false,
-          courseId: result.courseId,
-          userId: result.userId ? result.userId.toString() : currentUserId,
-          completedAt: result.completedAt,
-          answers: result.answers,
-        }));
-        setQuizResults(compatibleQuizResults);
-      } else {
-        setQuizResults([]);
+        // FIXED: Handle quiz result from progress (single result)
+        if (convertedProgress.quizResult) {
+          const singleQuizResult: QuizResult = {
+            moduleId: 1, // Default for final quiz
+            score: convertedProgress.quizResult.score,
+            passed: convertedProgress.quizResult.passed,
+            courseId: convertedProgress.quizResult.courseId,
+            userId: convertedProgress.quizResult.userId?.toString() || currentUserId,
+            completedAt: convertedProgress.quizResult.completedAt,
+            answers: convertedProgress.quizResult.answers,
+          };
+          setQuizResults([singleQuizResult]);
+          console.log('🎯 Quiz result from progress:', singleQuizResult);
+        } else {
+          // Fallback: Try to get from quiz results endpoint
+          try {
+            const quizResultsData = await actor.getMyQuizResults(courseIdNum);
+            const convertedQuizResults = convertBigIntToString(quizResultsData);
+
+            if (
+              convertedQuizResults &&
+              Array.isArray(convertedQuizResults) &&
+              convertedQuizResults.length > 0
+            ) {
+              const compatibleResults: QuizResult[] = convertedQuizResults.map((result: any) => ({
+                moduleId: result.moduleId || 1,
+                score: result.score || 0,
+                passed: result.passed || false,
+                courseId: result.courseId,
+                userId: result.userId?.toString() || currentUserId,
+                completedAt: result.completedAt,
+                answers: result.answers,
+              }));
+              setQuizResults(compatibleResults);
+              console.log('🎯 Quiz results from endpoint:', compatibleResults.length);
+            } else {
+              setQuizResults([]);
+              console.log('📝 No quiz results found');
+            }
+          } catch (quizError) {
+            console.warn('⚠️ Could not load quiz results:', quizError);
+            setQuizResults([]);
+          }
+        }
       }
     } catch (error) {
       console.error('❌ Error restoring progress:', error);
@@ -445,20 +594,27 @@ export default function LearningPage() {
     }
   };
 
-  const loadFinalQuizData = async (courseIdNum: number, materials: CourseMaterial) => {
-    if (!learningService) {
-      console.warn('⚠️ Learning service not available');
-      return;
-    }
+  // FIXED: Enhanced quiz data loading
+  const loadFinalQuizData = async (
+    courseIdNum: number,
+    materials: CourseMaterial,
+    service: LearningService
+  ) => {
+    if (!service) return;
 
     try {
       setIsLoadingQuiz(true);
       console.log(`🎯 Loading final quiz for course: ${courseIdNum}`);
 
-      const finalQuiz = await learningService.getFinalQuiz(courseIdNum);
+      const finalQuiz = await service.getFinalQuiz(courseIdNum);
 
       if (finalQuiz && finalQuiz.questions && finalQuiz.questions.length > 0) {
-        console.log('✅ Final quiz loaded:', finalQuiz.title);
+        console.log(
+          '✅ Final quiz loaded:',
+          finalQuiz.title,
+          '- Questions:',
+          finalQuiz.questions.length
+        );
         setFinalQuizData(finalQuiz);
       } else {
         console.log('❌ No final quiz available for this course');
@@ -472,68 +628,148 @@ export default function LearningPage() {
     }
   };
 
-  // ENHANCED: Function to check and generate certificate after quiz completion
+  // FIXED: Enhanced certificate checking and generation using backend status
   const checkAndGenerateCertificate = async () => {
-    if (!actor || !courseId || !currentUserId || !learningService) {
+    if (!actor || !courseId || !currentUserId) {
       console.warn('Missing dependencies for certificate check');
       return;
     }
 
     try {
-      console.log('Checking for certificate eligibility...');
+      console.log('🎓 Checking for certificate eligibility...');
       startLoading();
 
-      // Use the comprehensive completion check from learning service
-      const completionStatus = await learningService.checkCourseCompletion(Number(courseId));
+      // FIXED: Use backend completion status directly
+      const status = await checkCompletionStatus();
 
-      console.log('Completion status received:', completionStatus);
-
-      // If certificate already exists, show it
-      if (completionStatus.certificate) {
-        console.log('Certificate already exists:', completionStatus.certificate.tokenId);
-        // FIXED: Convert backend certificate to frontend type
-        const convertedCert = convertBackendCertificate(completionStatus.certificate);
-        setUserCertificate(convertedCert);
-        setCurrentView('certificate');
-        toast.success('Certificate retrieved successfully!');
+      if (!status) {
+        toast.error('Failed to check course completion status');
         return;
       }
 
-      // If eligible for certificate, generate it
-      if (completionStatus.canGetCertificate) {
-        console.log('User is eligible for certificate, generating...');
+      console.log('📋 Backend Completion Status:', {
+        canGetCertificate: status.canGetCertificate,
+        quizPassed: status.quizPassed,
+        completedModulesCount: status.completedModulesCount,
+        totalModules: status.totalModules,
+      });
 
-        // FIXED: Use getCertificate method from learningService instead
-        const certificateResult = await learningService.getCertificate(Number(courseId));
+      // Check if user already has certificate
+      if (userCertificate) {
+        console.log('📜 Certificate already exists:', userCertificate.tokenId);
+        setCurrentView('certificate');
+        toast.success('🎉 Certificate found!');
+        return;
+      }
 
-        if (certificateResult) {
-          console.log('Certificate generated successfully:', certificateResult.tokenId);
-          // FIXED: Convert backend certificate to frontend type
-          const convertedCert = convertBackendCertificate(certificateResult);
-          setUserCertificate(convertedCert);
-          setCurrentView('certificate');
-          toast.success('Congratulations! Your certificate has been generated!');
-        } else {
-          throw new Error('Failed to generate certificate');
-        }
+      // If eligible for certificate
+      if (status.canGetCertificate) {
+        console.log('✅ User is eligible for certificate');
+
+        // Wait a bit for backend to process, then check for certificate
+        setTimeout(async () => {
+          try {
+            const certificates = await actor.getMyCertificates();
+            if (certificates && certificates.length > 0) {
+              const courseIdNum = Number(courseId);
+              const courseCert = certificates.find(
+                (cert: any) => Number(cert.courseId) === courseIdNum
+              );
+              if (courseCert) {
+                console.log('📜 Certificate generated:', courseCert.tokenId);
+                const convertedCert = convertBackendCertificate(courseCert);
+                setUserCertificate(convertedCert);
+                setCurrentView('certificate');
+                toast.success('🎉 Congratulations! Your certificate has been generated!');
+              } else {
+                toast.warning(
+                  'Certificate is being processed. Please wait a moment and check again.'
+                );
+              }
+            } else {
+              toast.warning('Certificate is being processed. Please check again in a moment.');
+            }
+          } catch (error) {
+            console.error('Error in delayed certificate check:', error);
+            toast.error('Failed to generate certificate. Please try again.');
+          }
+        }, 3000);
+
+        toast.info('Certificate is being processed...', { duration: 3000 });
       } else {
-        // Provide specific feedback based on completion status
-        if (!completionStatus.hasQuizPassed) {
-          toast.warning('You need to pass the final quiz to earn your certificate');
-        } else if (!completionStatus.isComplete) {
-          toast.warning('Complete all course modules to earn your certificate');
+        // Provide specific feedback
+        if (!status.quizPassed) {
+          toast.warning('❌ You need to pass the final quiz to earn your certificate');
+          console.log('❌ Quiz not passed yet');
+        } else if (status.completedModulesCount < status.totalModules) {
+          toast.warning('❌ Complete all course modules to earn your certificate');
+          console.log('❌ Not all modules completed');
         } else {
-          toast.warning('Complete all requirements to earn your certificate');
+          toast.warning('❌ Complete all requirements to earn your certificate');
+          console.log('❌ Requirements not met');
         }
       }
     } catch (error) {
-      console.error('Error checking/generating certificate:', error);
-      toast.error('Failed to generate certificate. Please try again.');
+      console.error('❌ Error checking/generating certificate:', error);
+      toast.error('Failed to process certificate request. Please try again.');
     } finally {
       stopLoading();
     }
   };
 
+  // FIXED: Enhanced quiz completion handler
+  const handleQuizComplete = async (quizResult: any) => {
+    console.log('🎯 Quiz completed with result:', quizResult);
+
+    try {
+      startLoading();
+
+      // Convert to compatible format
+      const compatibleQuizResult: QuizResult = {
+        moduleId: quizResult.moduleId || 1,
+        score: quizResult.score || 0,
+        passed: quizResult.passed || false,
+        courseId: quizResult.courseId,
+        userId: quizResult.userId ? quizResult.userId.toString() : currentUserId || 'unknown',
+        completedAt: quizResult.completedAt,
+        answers: quizResult.answers,
+      };
+
+      // Update quiz results
+      const newQuizResults = [
+        ...quizResults.filter((r) => r.courseId !== compatibleQuizResult.courseId),
+        compatibleQuizResult,
+      ];
+      setQuizResults(newQuizResults);
+
+      // Clear current quiz
+      setCurrentQuiz(null);
+      setCurrentView('learning');
+
+      if (quizResult.passed) {
+        console.log('✅ Quiz passed! Score:', quizResult.score);
+        toast.success(`🎉 Quiz passed with ${quizResult.score}%! Checking for certificate...`);
+
+        // FIXED: Refresh completion status and check for certificate
+        setTimeout(async () => {
+          await checkCompletionStatus();
+          await checkAndGenerateCertificate();
+        }, 2000);
+      } else {
+        console.log('❌ Quiz failed, score:', quizResult.score);
+        toast.error(`❌ Quiz failed. Score: ${quizResult.score}%. You can try again!`);
+      }
+    } catch (error) {
+      console.error('❌ Error handling quiz completion:', error);
+      toast.error('Error processing quiz result');
+      setCurrentView('learning');
+      setCurrentQuiz(null);
+    } finally {
+      stopLoading();
+    }
+  };
+
+  // FIXED: Enhanced enrollment handler
   const handleEnroll = async () => {
     if (!actor || !courseId || !currentUserId) return;
 
@@ -555,7 +791,8 @@ export default function LearningPage() {
           userStateManager.saveUserState(updatedState);
         }
 
-        window.location.reload();
+        // Reload to refresh data
+        setTimeout(() => window.location.reload(), 1000);
       } else {
         setError(result.err || 'Failed to enroll in course');
         toast.error(result.err || 'Failed to enroll in course');
@@ -569,7 +806,7 @@ export default function LearningPage() {
     }
   };
 
-  // Helper functions
+  // Helper functions (same as before)
   const isModuleLocked = (moduleIndex: number): boolean => {
     if (moduleIndex === 0) return false;
     const prevModule = courseMaterial?.modules[moduleIndex - 1];
@@ -586,7 +823,34 @@ export default function LearningPage() {
     setCurrentView('learning');
   };
 
-  // FIXED: Simplified quiz start handler
+  const handleModuleComplete = async (courseId: number, moduleId: number) => {
+    if (!learningService || !currentUserId) {
+      console.warn('Missing dependencies for module completion');
+      return;
+    }
+
+    try {
+      console.log(`✅ Marking module ${moduleId} as completed for course ${courseId}`);
+
+      const result = await learningService.completeModule(courseId, moduleId);
+
+      if ('ok' in result) {
+        console.log('✅ Module marked as completed successfully');
+        toast.success('Module completed! 🎉');
+
+        // Refresh learning progress and completion status
+        await learningActions.refresh();
+        await checkCompletionStatus();
+      } else {
+        console.error('❌ Failed to mark module as completed:', result.err);
+        toast.error('Failed to save module completion');
+      }
+    } catch (error) {
+      console.error('❌ Error completing module:', error);
+      toast.error('Error saving module progress');
+    }
+  };
+
   const handleStartQuiz = async () => {
     if (!actor || !courseId || !courseMaterial || !currentUserId || !learningService) return;
 
@@ -596,15 +860,14 @@ export default function LearningPage() {
     try {
       console.log('🎯 Starting final quiz...');
 
-      // Load the actual final quiz from the service
       const finalQuiz = await learningService.getFinalQuiz(Number(courseId));
 
       if (finalQuiz) {
         setCurrentQuiz(finalQuiz);
         setCurrentView('quiz');
-        console.log('✅ Quiz loaded and ready');
+        console.log('✅ Quiz loaded and ready, Questions:', finalQuiz.questions.length);
       } else {
-        toast.error('No quiz available for this course');
+        toast.error('❌ No quiz available for this course');
       }
     } catch (error) {
       console.error('❌ Quiz loading error:', error);
@@ -614,58 +877,6 @@ export default function LearningPage() {
       stopLoading();
     }
   };
-
-  // UPDATED: Enhanced quiz completion handler dengan konversi tipe yang benar
-  const handleQuizComplete = async (quizResult: any) => {
-    console.log('Quiz completed with result:', quizResult);
-
-    try {
-      startLoading();
-
-      // FIXED: Konversi ke format QuizResult yang kompatibel dengan sidebar
-      const compatibleQuizResult: QuizResult = {
-        moduleId: quizResult.moduleId || 1, // Default ke module 1 untuk final quiz
-        score: quizResult.score || 0,
-        passed: quizResult.passed || false,
-        courseId: quizResult.courseId,
-        userId: quizResult.userId ? quizResult.userId.toString() : currentUserId || 'unknown', // Konversi Principal ke string
-        completedAt: quizResult.completedAt,
-        answers: quizResult.answers,
-      };
-
-      // Update quiz results state dengan format yang benar
-      const newQuizResults = [...quizResults, compatibleQuizResult];
-      setQuizResults(newQuizResults);
-
-      // Check if quiz passed
-      if (quizResult.passed) {
-        console.log('Quiz passed! Checking for certificate...');
-        toast.success('Quiz passed! Checking for certificate...');
-
-        // Clear current quiz first
-        setCurrentQuiz(null);
-
-        // Small delay to ensure backend is updated, then check certificate
-        setTimeout(async () => {
-          await checkAndGenerateCertificate();
-        }, 2000); // Increased delay to ensure backend processing
-      } else {
-        console.log('Quiz failed, score:', quizResult.score);
-        toast.error(`Quiz failed. Score: ${quizResult.score}%. Try again!`);
-        setCurrentView('learning');
-        setCurrentQuiz(null);
-      }
-    } catch (error) {
-      console.error('Error handling quiz completion:', error);
-      toast.error('Error processing quiz result');
-      setCurrentView('learning');
-      setCurrentQuiz(null);
-    } finally {
-      stopLoading();
-    }
-  };
-
-  // REMOVED: handleQuizSubmit function as it's now handled by QuizComponent
 
   // Computed values
   const currentModule = learningState.currentModule;
@@ -724,14 +935,14 @@ export default function LearningPage() {
     );
   }
 
-  // Quiz View - UPDATED with proper completion handler
+  // Quiz View
   if (currentView === 'quiz' && currentQuiz) {
     return (
       <QuizComponent
         courseId={Number(courseId)}
         learningService={learningService}
         currentUserId={currentUserId}
-        onQuizComplete={handleQuizComplete} // FIXED: Use proper completion handler
+        onQuizComplete={handleQuizComplete}
         onBack={() => {
           setCurrentView('learning');
           setCurrentQuiz(null);
@@ -770,6 +981,76 @@ export default function LearningPage() {
           {/* Main Content */}
           <div className="lg:col-span-3">
             <div className="space-y-8">
+              {/* FIXED: Enhanced Completion Status Info Banner using backend status */}
+              {backendCompletionStatus && (
+                <motion.div
+                  className="rounded-xl border border-slate-600/50 bg-gradient-to-r from-slate-800/80 to-slate-700/80 p-6 backdrop-blur-sm"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`h-3 w-3 rounded-full ${
+                          backendCompletionStatus.canGetCertificate
+                            ? 'bg-green-400'
+                            : backendCompletionStatus.quizPassed &&
+                                backendCompletionStatus.completedModulesCount >=
+                                  backendCompletionStatus.totalModules
+                              ? 'bg-yellow-400'
+                              : backendCompletionStatus.quizPassed
+                                ? 'bg-blue-400'
+                                : 'bg-red-400'
+                        }`}
+                      />
+                      <div>
+                        <h3 className="font-semibold text-white">
+                          {backendCompletionStatus.canGetCertificate
+                            ? '🏆 Ready for Certificate!'
+                            : backendCompletionStatus.quizPassed &&
+                                backendCompletionStatus.completedModulesCount >=
+                                  backendCompletionStatus.totalModules
+                              ? '⏳ Processing Certificate...'
+                              : backendCompletionStatus.quizPassed
+                                ? '📚 Complete Remaining Modules'
+                                : backendCompletionStatus.completedModulesCount >=
+                                    backendCompletionStatus.totalModules
+                                  ? '🎯 Take the Final Quiz'
+                                  : '📖 Continue Learning'}
+                        </h3>
+                        <p className="text-sm text-gray-300">
+                          Modules: {backendCompletionStatus.completedModulesCount}/
+                          {backendCompletionStatus.totalModules} • Quiz:{' '}
+                          {backendCompletionStatus.quizPassed
+                            ? `✅ Passed (${backendCompletionStatus.quizScore}%)`
+                            : '❌ Not passed'}{' '}
+                          • Certificate: {userCertificate ? '✅ Earned' : '⏳ Pending'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    {userCertificate && (
+                      <button
+                        onClick={() => setCurrentView('certificate')}
+                        className="rounded-lg bg-gradient-to-r from-yellow-500 to-yellow-600 px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:scale-105"
+                      >
+                        View Certificate
+                      </button>
+                    )}
+                    {!userCertificate && backendCompletionStatus.canGetCertificate && (
+                      <button
+                        onClick={checkAndGenerateCertificate}
+                        disabled={isCheckingCompletion}
+                        className="rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:scale-105 disabled:opacity-50"
+                      >
+                        {isCheckingCompletion ? '⏳ Processing...' : '🎓 Get Certificate'}
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
               {/* Module Header */}
               {currentModule && (
                 <ModuleHeader
@@ -802,9 +1083,14 @@ export default function LearningPage() {
                 isModuleLocked={isModuleLocked}
               />
 
-              {/* Final Quiz Section */}
+              {/* FIXED: Enhanced Final Quiz Section using backend status */}
               <FinalQuizSection
-                allLearningCompleted={allLearningCompleted}
+                allLearningCompleted={
+                  backendCompletionStatus
+                    ? backendCompletionStatus.completedModulesCount >=
+                      backendCompletionStatus.totalModules
+                    : allLearningCompleted
+                }
                 persistentUserState={persistentUserState}
                 learningState={learningState}
                 totalModules={courseMaterial.modules.length}
@@ -821,7 +1107,7 @@ export default function LearningPage() {
                 persistentUserState={persistentUserState}
               />
 
-              {/* Certificate Achievement Banner */}
+              {/* FIXED: Enhanced Certificate Achievement Banner */}
               {userCertificate && (
                 <motion.div
                   className="mt-6 animate-pulse rounded-2xl border-2 border-yellow-400/50 bg-gradient-to-r from-slate-800/80 to-slate-700/80 p-8 text-center shadow-xl backdrop-blur-sm"
@@ -834,24 +1120,59 @@ export default function LearningPage() {
                     Congratulations{persistentUserState && `, ${persistentUserState.userName}`}! You
                     have successfully earned your NFT certificate!
                   </p>
+                  <div className="mb-4 rounded-lg bg-slate-700/60 p-4">
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <div className="font-semibold text-green-400">✅ Modules</div>
+                        <div className="text-gray-300">
+                          {backendCompletionStatus?.completedModulesCount ||
+                            learningState.completedModules.length}
+                          /{backendCompletionStatus?.totalModules || courseMaterial.modules.length}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-green-400">✅ Quiz</div>
+                        <div className="text-gray-300">
+                          {backendCompletionStatus?.quizScore ||
+                            quizResults.find((q) => q.passed)?.score ||
+                            0}
+                          % Passed
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-yellow-400">🏆 Certificate</div>
+                        <div className="text-gray-300">#{userCertificate.tokenId}</div>
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex items-center justify-center gap-4">
                     <button
                       onClick={() => setCurrentView('certificate')}
                       className="rounded-lg bg-gradient-to-r from-yellow-500 to-yellow-600 px-6 py-3 font-medium text-white transition-all duration-200 hover:scale-105"
                     >
-                      View Your Certificate
+                      🎓 View Your Certificate
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (userCertificate) {
+                          window.open(`/certificate/${userCertificate.tokenId}`, '_blank');
+                        }
+                      }}
+                      className="rounded-lg border border-yellow-400/50 bg-slate-700/60 px-6 py-3 font-medium text-gray-200 transition-all duration-200 hover:scale-105"
+                    >
+                      🔗 Share Certificate
                     </button>
                     <button
                       onClick={() => learningActions.goToModule(0)}
                       className="rounded-lg border border-gray-400 bg-slate-700/60 px-6 py-3 font-medium text-gray-200 transition-all duration-200 hover:scale-105"
                     >
-                      Review Course
+                      📚 Review Course
                     </button>
                   </div>
                 </motion.div>
               )}
 
-              {/* Debug Information (Development Only) */}
+              {/* FIXED: Enhanced Debug Information with backend status */}
               {process.env.NODE_ENV === 'development' && (
                 <motion.div
                   className="mt-6 rounded-lg border border-gray-600/50 bg-gray-800/30 p-4 font-mono text-xs"
@@ -859,17 +1180,118 @@ export default function LearningPage() {
                   animate={{ opacity: 1 }}
                 >
                   <h4 className="mb-2 text-gray-400">Debug Information (Dev Only)</h4>
-                  <div className="space-y-1 text-gray-500">
-                    <div>Current User ID: {currentUserId}</div>
-                    <div>Persistent User ID: {persistentUserState?.userId}</div>
-                    <div>User Name: {persistentUserState?.userName || 'N/A'}</div>
-                    <div>Course ID: {courseId}</div>
-                    <div>Current Module: {learningState.currentModuleIndex + 1}</div>
-                    <div>Completed Modules: {learningState.completedModules.length}</div>
-                    <div>Overall Progress: {Math.round(learningState.overallProgress)}%</div>
-                    <div>Has Certificate: {!!userCertificate}</div>
-                    <div>Is Enrolled: {isEnrolled.toString()}</div>
-                    <div>Quiz Results: {quizResults.length}</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1 text-gray-500">
+                      <div>
+                        <span className="text-gray-400">User ID:</span>{' '}
+                        {currentUserId?.slice(0, 20)}...
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Persistent User:</span>{' '}
+                        {persistentUserState?.userId.slice(0, 20)}...
+                      </div>
+                      <div>
+                        <span className="text-gray-400">User Name:</span>{' '}
+                        {persistentUserState?.userName || 'N/A'}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Course ID:</span> {courseId}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Current Module:</span>{' '}
+                        {learningState.currentModuleIndex + 1}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Is Enrolled:</span> {isEnrolled.toString()}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Backend Status Available:</span>{' '}
+                        {!!backendCompletionStatus}
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-gray-500">
+                      <div>
+                        <span className="text-gray-400">Frontend Completed Modules:</span>{' '}
+                        {learningState.completedModules.length}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Backend Completed Modules:</span>{' '}
+                        {backendCompletionStatus?.completedModulesCount || 'N/A'}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Overall Progress:</span>{' '}
+                        {Math.round(learningState.overallProgress)}%
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Frontend Quiz Results:</span>{' '}
+                        {quizResults.length}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Backend Quiz Passed:</span>{' '}
+                        {backendCompletionStatus?.quizPassed ? '✅' : '❌'}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Backend Quiz Score:</span>{' '}
+                        {backendCompletionStatus?.quizScore || 'N/A'}%
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Has Certificate:</span> {!!userCertificate}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Can Get Certificate:</span>{' '}
+                        {backendCompletionStatus?.canGetCertificate ? '✅' : '❌'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Manual Actions */}
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={checkCompletionStatus}
+                      disabled={isCheckingCompletion}
+                      className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {isCheckingCompletion ? 'Checking...' : 'Refresh Backend Status'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        console.log('=== DEBUG INFO ===');
+                        console.log('User Progress:', userProgress);
+                        console.log('Frontend Quiz Results:', quizResults);
+                        console.log('Backend Completion Status:', backendCompletionStatus);
+                        console.log('Learning State:', learningState);
+                        console.log('User Certificate:', userCertificate);
+                        console.log('=================');
+                      }}
+                      className="rounded bg-gray-600 px-3 py-1 text-xs text-white hover:bg-gray-700"
+                    >
+                      Log Debug
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (actor && courseId) {
+                          try {
+                            const certificates = await actor.getMyCertificates();
+                            console.log('Manual Certificate Check:', certificates);
+                            if (certificates && certificates.length > 0) {
+                              const courseCert = certificates.find(
+                                (cert: any) => Number(cert.courseId) === Number(courseId)
+                              );
+                              if (courseCert) {
+                                const converted = convertBackendCertificate(courseCert);
+                                setUserCertificate(converted);
+                                toast.success('Certificate found manually!');
+                              }
+                            }
+                          } catch (error) {
+                            console.error('Manual certificate check failed:', error);
+                          }
+                        }
+                      }}
+                      className="rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700"
+                    >
+                      Manual Cert Check
+                    </button>
                   </div>
                 </motion.div>
               )}

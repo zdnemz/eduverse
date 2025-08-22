@@ -439,7 +439,14 @@ export const useLearningProgress = (
 
   const updateReadingProgress = useCallback(
     (progress: number) => {
-      if (!state.currentModule || !storage.current || !currentUserId) return;
+      if (!state.currentModule || !storage.current || !currentUserId) {
+        console.warn('⚠️  Cannot update reading progress: missing requirements', {
+          hasCurrentModule: !!state.currentModule,
+          hasStorage: !!storage.current,
+          hasUserId: !!currentUserId,
+        });
+        return;
+      }
 
       const clampedProgress = Math.max(0, Math.min(100, progress));
 

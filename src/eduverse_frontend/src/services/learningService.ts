@@ -1,4 +1,4 @@
-// Fixed LearningService.ts - Quiz Loading Issues
+// FIXED LearningService.ts - Solusi Method Backend yang Hilang
 
 import { useState, useEffect, useCallback } from 'react';
 import { ActorSubclass } from '@dfinity/agent';
@@ -43,7 +43,20 @@ const convertBigIntToString = (obj: any): any => {
   return obj;
 };
 
-// Course completion status interface
+// FIXED: Backend completion status interface (sesuai dengan backend)
+export interface BackendCompletionStatus {
+  isEnrolled: boolean;
+  totalModules: number;
+  completedModules: number[];
+  completedModulesCount: number;
+  overallProgress: number;
+  hasQuizResult: boolean;
+  quizPassed: boolean;
+  quizScore: number;
+  canGetCertificate: boolean;
+}
+
+// Frontend completion status interface
 export interface CourseCompletionStatus {
   certificate: BackendCertificate | null;
   canGetCertificate: boolean;
@@ -238,16 +251,43 @@ export class LearningService {
     }
   }
 
+  // ===== MODULE COMPLETION FUNCTION =====
+
+  /**
+   * Mark module as completed
+   */
+  async completeModule(
+    courseId: number,
+    moduleId: number
+  ): Promise<{ ok: string } | { err: string }> {
+    try {
+      console.log(`✅ Marking module ${moduleId} as completed in course ${courseId}`);
+      const result = await this.actor.completeModule(toBigInt(courseId), toBigInt(moduleId));
+      const convertedResult = convertBigIntToString(result);
+
+      if ('ok' in convertedResult) {
+        console.log(`✅ Module ${moduleId} marked as completed successfully`);
+      } else {
+        console.error(`❌ Failed to mark module ${moduleId} as completed:`, convertedResult.err);
+      }
+
+      return convertedResult;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error completing module:', errorMessage);
+      return { err: 'Failed to complete module' };
+    }
+  }
+
   // ===== QUIZ FUNCTIONS - FIXED =====
 
   /**
-   * Get quiz for course - FIXED: Removed moduleId parameter since backend doesn't use it
+   * Get quiz for course
    */
   async getQuiz(courseId: number): Promise<{ ok: EnhancedCourseQuiz } | { err: string }> {
     try {
       console.log(`🔍 Getting quiz for course: ${courseId}`);
 
-      // PERBAIKAN: Hanya kirim courseId, hapus moduleId parameter
       const result = await this.actor.getQuiz(toBigInt(courseId));
 
       if ('ok' in convertBigIntToString(result)) {
@@ -265,7 +305,7 @@ export class LearningService {
   }
 
   /**
-   * Submit quiz answers - ORIGINAL: For module quizzes
+   * Submit quiz answers
    */
   async submitQuiz(
     courseId: number,
@@ -290,7 +330,6 @@ export class LearningService {
         selectedAnswer: toBigInt(answer.selectedAnswer),
       }));
 
-      // PERBAIKAN: Hapus moduleId parameter
       const result = await this.actor.submitQuiz(toBigInt(courseId), convertedAnswers);
 
       return convertBigIntToString(result);
@@ -348,12 +387,105 @@ export class LearningService {
     }
   }
 
-  // ===== PROGRESS TRACKING =====
+  // ===== PROGRESS TRACKING - FIXED =====
 
+  /**
+   * FIXED: Get completion status directly from backend (method sudah ada di backend)
+   */
+  async getCourseCompletionStatus(courseId: number): Promise<BackendCompletionStatus | null> {
+    try {
+      console.log(`📊 Getting completion status from backend for course ${courseId}`);
+
+      // LANGSUNG panggil method backend tanpa through learningService
+      const result = await this.actor.getCourseCompletionStatus(toBigInt(courseId));
+
+      if (!result) {
+        console.log('📊 No completion status found from backend');
+        return null;
+      }
+
+      const status = convertBigIntToString(result);
+      console.log('📊 Backend completion status:', status);
+      return status;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error getting completion status:', errorMessage);
+
+      // FALLBACK: Jika method tidak ada, hitung manual dari frontend
+      console.warn('⚠️ Backend method not available, calculating manually...');
+      return await this.calculateCompletionStatusManually(courseId);
+    }
+  }
+
+  /**
+   * FALLBACK: Manual calculation jika backend method tidak tersedia
+   */
+  private async calculateCompletionStatusManually(
+    courseId: number
+  ): Promise<BackendCompletionStatus | null> {
+    try {
+      console.log('🔄 Calculating completion status manually...');
+
+      // Get user progress
+      const progress = await this.getUserProgress(courseId);
+      if (!progress) {
+        return null;
+      }
+
+      // Get course materials to know total modules
+      const materialsResult = await this.getCourseMaterials(courseId);
+      let totalModules = 0;
+      if ('ok' in materialsResult) {
+        totalModules = materialsResult.ok.modules?.length || 0;
+      }
+
+      // Get quiz results
+      const quizResults = await this.getQuizResults(courseId);
+      const hasQuizResult = quizResults.length > 0;
+      const quizPassed = quizResults.some((r) => r.passed);
+      const quizScore = quizResults.length > 0 ? Math.max(...quizResults.map((r) => r.score)) : 0;
+
+      const completedModulesCount = progress.completedModules?.length || 0;
+      const isComplete = completedModulesCount >= totalModules && totalModules > 0;
+      const canGetCertificate = isComplete && quizPassed;
+      const manualStatus: BackendCompletionStatus = {
+        isEnrolled: true,
+        totalModules,
+        completedModules: (progress.completedModules || []).map((id) => Number(id)),
+        completedModulesCount,
+        overallProgress: Number(progress.overallProgress) || 0,
+        hasQuizResult,
+        quizPassed,
+        quizScore,
+        canGetCertificate,
+      };
+
+      console.log('📊 Manual completion status calculated:', manualStatus);
+      return manualStatus;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error calculating manual completion status:', errorMessage);
+      return null;
+    }
+  }
+
+  /**
+   * Get user progress
+   */
   async getUserProgress(courseId: number): Promise<UserProgress | null> {
     try {
+      console.log(`📊 Getting user progress for course ${courseId}`);
       const result = await this.actor.getMyProgress(toBigInt(courseId));
-      return result ? convertBigIntToString(result) : null;
+
+      if (!result) {
+        console.log('📊 No progress found, returning null');
+        return null;
+      }
+
+      let progress = convertBigIntToString(result);
+      console.log('📊 Raw progress from backend:', JSON.stringify(progress, null, 2));
+
+      return progress;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error getting user progress:', errorMessage);
@@ -364,7 +496,7 @@ export class LearningService {
   async getQuizResults(courseId: number): Promise<EnhancedQuizResult[]> {
     try {
       const result = await this.actor.getMyQuizResults(toBigInt(courseId));
-      return result ? [convertBigIntToString(result)] : [];
+      return result ? [convertBigIntToString(result)].flat() : [];
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error getting quiz results:', errorMessage);
@@ -409,7 +541,7 @@ export class LearningService {
     }
   }
 
-  // ===== ENHANCED FINAL QUIZ METHODS - FIXED =====
+  // ===== ENHANCED FINAL QUIZ METHODS =====
 
   /**
    * Check if user can take final quiz
@@ -418,29 +550,21 @@ export class LearningService {
     try {
       console.log(`🔍 Checking if user can take final quiz for course ${courseId}`);
 
-      // Get user progress
-      const progress = await this.getUserProgress(courseId);
-      if (!progress) {
-        console.log('❌ No progress found for course');
+      // Use backend completion status
+      const completionData = await this.getCourseCompletionStatus(courseId);
+
+      if (!completionData) {
+        console.log('❌ No completion data found');
         return false;
       }
-
-      // Get course materials to check total modules
-      const materialsResult = await this.getCourseMaterials(courseId);
-      if (!('ok' in materialsResult)) {
-        console.log('❌ Course materials not found');
-        return false;
-      }
-
-      const materials = materialsResult.ok;
-      const totalModules = materials.modules.length;
-      const completedModules = progress.completedModules.length;
-
-      console.log(`📊 Module completion: ${completedModules}/${totalModules}`);
 
       // Can take final quiz if all modules are completed
-      const canTake = completedModules >= totalModules;
-      console.log(`🎯 Can take final quiz: ${canTake}`);
+      const canTake =
+        completionData.completedModulesCount >= completionData.totalModules &&
+        completionData.totalModules > 0;
+      console.log(
+        `🎯 Can take final quiz: ${canTake} (${completionData.completedModulesCount}/${completionData.totalModules} modules completed)`
+      );
 
       return canTake;
     } catch (error: unknown) {
@@ -451,7 +575,7 @@ export class LearningService {
   }
 
   /**
-   * Get final quiz - FIXED: Directly get course quiz instead of module-specific quiz
+   * Get final quiz
    */
   async getFinalQuiz(courseId: number): Promise<EnhancedCourseQuiz | null> {
     try {
@@ -476,17 +600,17 @@ export class LearningService {
   }
 
   /**
-   * Check course completion status
+   * FIXED: Simplified course completion check
    */
   async checkCourseCompletion(courseId: number): Promise<CourseCompletionStatus> {
     try {
       console.log(`🎓 Checking course completion for Course: ${courseId}`);
 
-      // Check if all modules are completed
-      const progress = await this.getUserProgress(courseId);
-      const materialsResult = await this.getCourseMaterials(courseId);
+      // Get backend completion status
+      const completionData = await this.getCourseCompletionStatus(courseId);
 
-      if (!('ok' in materialsResult) || !progress) {
+      if (!completionData) {
+        console.log('❌ No completion data - user not enrolled or course not found');
         return {
           certificate: null,
           canGetCertificate: false,
@@ -495,30 +619,32 @@ export class LearningService {
         };
       }
 
-      const materials = materialsResult.ok;
-      const totalModules = materials.modules.length;
-      const completedModules = progress.completedModules.length;
-      const isComplete = completedModules >= totalModules;
+      console.log('📊 Backend completion data:', completionData);
 
-      // Check if quiz is passed (if it exists)
-      let hasQuizPassed = true; // Default to true if no quiz exists
-      const quizResults = await this.getQuizResults(courseId);
+      const isComplete =
+        completionData.completedModulesCount >= completionData.totalModules &&
+        completionData.totalModules > 0;
+      const hasQuizPassed = completionData.quizPassed;
+      const canGetCertificate = completionData.canGetCertificate;
 
-      if (quizResults.length > 0) {
-        // Check if the user has passed any quiz for this course
-        hasQuizPassed = quizResults.some((result) => result.passed);
-      }
+      console.log(`🏆 FINAL STATUS:`);
+      console.log(
+        `  📚 Modules: ${completionData.completedModulesCount}/${completionData.totalModules} (Complete: ${isComplete})`
+      );
+      console.log(
+        `  🎯 Quiz: ${hasQuizPassed ? 'Passed' : 'Not passed'} (Score: ${completionData.quizScore})`
+      );
+      console.log(`  🏆 Certificate: ${canGetCertificate ? 'Available' : 'Not available'}`);
 
-      const canGetCertificate = isComplete && hasQuizPassed;
-
-      // Try to get existing certificates and find one for this course
+      // Try to get existing certificate if eligible
       let certificate = null;
       if (canGetCertificate) {
         try {
           const certificates = await this.getUserCertificates();
-          certificate = certificates.find((cert) => Number(cert.courseId) === courseId) || null;
-        } catch (error: unknown) {
-          console.log('No certificate found yet');
+          certificate = certificates?.find((cert) => Number(cert?.courseId) === courseId) || null;
+          console.log(`📜 Existing certificate: ${certificate ? 'Found' : 'Not found'}`);
+        } catch (certError) {
+          console.log('⚠️ Could not fetch certificates:', certError);
         }
       }
 
@@ -547,10 +673,10 @@ export const useLearningService = (actor: ActorSubclass<_SERVICE> | null) => {
   return new LearningService(actor);
 };
 
-// ====== ENHANCED QUIZ HOOKS - FIXED ======
+// ====== ENHANCED QUIZ HOOKS ======
 
 /**
- * Hook for managing quiz state and operations - FIXED for quiz loading
+ * Hook for managing quiz state and operations
  */
 export const useQuizManager = (learningService: LearningService | null, courseId: number) => {
   const [currentQuiz, setCurrentQuiz] = useState<EnhancedCourseQuiz | null>(null);
@@ -558,7 +684,7 @@ export const useQuizManager = (learningService: LearningService | null, courseId
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load quiz for specific module - FIXED: Now tries course-level quiz if no module-specific quiz
+  // Load quiz for course
   const loadQuiz = useCallback(async () => {
     if (!learningService) return null;
 
@@ -589,7 +715,7 @@ export const useQuizManager = (learningService: LearningService | null, courseId
     }
   }, [learningService, courseId]);
 
-  // Load final quiz - FIXED: Simplified
+  // Load final quiz
   const loadFinalQuiz = useCallback(async () => {
     if (!learningService) return null;
 
@@ -626,7 +752,7 @@ export const useQuizManager = (learningService: LearningService | null, courseId
     }
   }, [learningService, courseId]);
 
-  // Submit quiz - UPDATED: Better handling of final vs module quiz
+  // Submit quiz
   const submitQuiz = useCallback(
     async (answers: { questionId: number; selectedAnswer: number }[]) => {
       if (!learningService) return null;
@@ -700,5 +826,105 @@ export const useQuizManager = (learningService: LearningService | null, courseId
       const result = quizResults.find((r) => r.courseId === courseId);
       return result ? result.score : 0;
     },
+  };
+};
+
+// ===== MODULE COMPLETION HOOK =====
+
+/**
+ * Hook for managing module completion
+ */
+export const useModuleCompletion = (learningService: LearningService | null) => {
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const completeModule = useCallback(
+    async (courseId: number, moduleId: number) => {
+      if (!learningService) return { success: false, error: 'Service not available' };
+
+      try {
+        setIsCompleting(true);
+        console.log(`🔄 Completing module ${moduleId} in course ${courseId}`);
+
+        const result = await learningService.completeModule(courseId, moduleId);
+
+        if ('ok' in result) {
+          console.log(`✅ Module ${moduleId} completed successfully`);
+          return { success: true, message: result.ok };
+        } else {
+          console.error(`❌ Failed to complete module ${moduleId}:`, result.err);
+          return { success: false, error: result.err };
+        }
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('❌ Error completing module:', errorMessage);
+        return { success: false, error: errorMessage };
+      } finally {
+        setIsCompleting(false);
+      }
+    },
+    [learningService]
+  );
+
+  return {
+    completeModule,
+    isCompleting,
+  };
+};
+
+// ===== COURSE COMPLETION HOOK =====
+
+/**
+ * Hook for managing course completion status
+ */
+export const useCourseCompletion = (learningService: LearningService | null, courseId: number) => {
+  const [completionStatus, setCompletionStatus] = useState<CourseCompletionStatus | null>(null);
+  const [backendStatus, setBackendStatus] = useState<BackendCompletionStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const refreshCompletionStatus = useCallback(async () => {
+    if (!learningService || !courseId) return;
+
+    try {
+      setIsLoading(true);
+
+      // Get both backend and frontend completion status
+      const [backendData, frontendData] = await Promise.all([
+        learningService.getCourseCompletionStatus(courseId),
+        learningService.checkCourseCompletion(courseId),
+      ]);
+
+      setBackendStatus(backendData);
+      setCompletionStatus(frontendData);
+
+      console.log('🔄 Completion status refreshed:', { backendData, frontendData });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error refreshing completion status:', errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [learningService, courseId]);
+
+  // Load completion status on mount and when courseId changes
+  useEffect(() => {
+    refreshCompletionStatus();
+  }, [refreshCompletionStatus]);
+
+  return {
+    completionStatus,
+    backendStatus,
+    isLoading,
+    refreshCompletionStatus,
+    // Convenient getters
+    isComplete: completionStatus?.isComplete || false,
+    canGetCertificate: completionStatus?.canGetCertificate || false,
+    hasQuizPassed: completionStatus?.hasQuizPassed || false,
+    certificate: completionStatus?.certificate || null,
+    // Backend data getters
+    totalModules: backendStatus?.totalModules || 0,
+    completedModulesCount: backendStatus?.completedModulesCount || 0,
+    completedModules: backendStatus?.completedModules || [],
+    overallProgress: backendStatus?.overallProgress || 0,
+    quizScore: backendStatus?.quizScore || 0,
   };
 };
