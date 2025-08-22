@@ -198,37 +198,19 @@ persistent actor EduverseBackend {
   };
 
   // === QUIZ FUNCTIONS ===
-  public query({ caller }) func getQuiz(courseId: Nat, moduleId: Nat): async Result.Result<Types.CourseQuiz, Text> {
+  public query({ caller }) func getQuiz(courseId: Nat): async Result.Result<Types.CourseQuiz, Text> {
     if (not isEnrolled(caller, courseId)) {
       return #err("You must enroll in this course first");
     };
-    
-    switch (Array.find<Types.CourseInfo>(Courses.courses, func(course) = course.id == courseId)) {
-        case null { return #err("Course not found") };
-        case (?course) {
-          // Check if module exists in course materials
-          switch (Array.find<Types.CourseMaterial>(Materials.materials, func(material) = material.courseId == courseId)) {
-            case null { return #err("Course materials not found") };
-            case (?material) {
-              let moduleExists = Array.find<Types.Module>(material.modules, func(mod) = mod.moduleId == moduleId) != null;
-              if (not moduleExists) {
-                return #err("Module not found in this course");
-              };
-              
-              // Get the quiz
-              switch (Quizzes.getQuizByCourseId(courseId)) {
-                case null { #err("Quiz not available for this module") };
-                case (?quiz) { #ok(quiz) };
-              }
-            };
-          }
-        };
-      }
+
+    switch (Quizzes.getQuizByCourseId(courseId)) {
+      case null { #err("Quiz not available for this course") };
+      case (?quiz) { #ok(quiz) };
+    }
   };
 
   public shared({ caller }) func submitQuiz(
     courseId: Nat, 
-    moduleId: Nat, 
     answers: [Types.UserAnswer]
   ): async Result.Result<Types.QuizResult, Text> {
     if (not isEnrolled(caller, courseId)) {
@@ -253,7 +235,6 @@ persistent actor EduverseBackend {
         let score = Quizzes.calculateScore(userAnswerValues, correctAnswers);
         let passed = Quizzes.hasPassedQuiz(score, quiz.passingScore);
         
-        // FIXED: Added missing timeSpent field and removed moduleId
         let result: Types.QuizResult = {
           userId = caller;
           courseId = courseId;
@@ -261,53 +242,37 @@ persistent actor EduverseBackend {
           passed = passed;
           completedAt = Time.now();
           answers = answers;
-          timeSpent = null; // Optional field for time tracking
+          timeSpent = null;
         };
         
         // Store quiz result
         let resultKey = getUserProgressKey(caller, courseId);
-        switch (quizResults.get(resultKey)) {
-          case null {
-            quizResults.put(resultKey, [result]);
-          };
-          case (?_existing) {
-            // Replace existing result for same course (since we removed moduleId)
-            quizResults.put(resultKey, [result]);
-          };
-        };
+        quizResults.put(resultKey, [result]);
         
         // Update user progress if passed
         if (passed) {
           switch (userProgress.get(resultKey)) {
             case null { };
             case (?progress) {
-              let newCompletedModules = if (Array.find<Nat>(progress.completedModules, func(m) = m == moduleId) == null) {
-                Array.append(progress.completedModules, [moduleId])
-              } else {
-                progress.completedModules
+              // Mark semua module sebagai completed jika quiz final passed
+              let allModuleIds = switch (Array.find<Types.CourseMaterial>(Materials.materials, func(m) = m.courseId == courseId)) {
+                case null { [] };
+                case (?material) { Array.map<Types.Module, Nat>(material.modules, func(mod) = mod.moduleId) };
               };
               
-              // Get total modules for this course
-              let totalModules = switch (Array.find<Types.CourseMaterial>(Materials.materials, func(m) = m.courseId == courseId)) {
-                case null { 1 };
-                case (?material) { material.modules.size() };
-              };
-              
-              let newProgress = (newCompletedModules.size() * 100) / totalModules;
+              let _totalModules = allModuleIds.size();
               
               let updatedProgress = {
                 progress with 
-                completedModules = newCompletedModules;
-                quizResult = ?result; // Store the quiz result in progress
-                overallProgress = newProgress;
+                completedModules = allModuleIds; // Mark all modules as completed
+                quizResult = ?result;
+                overallProgress = 100; // Course completed
                 lastAccessed = Time.now();
               };
               userProgress.put(resultKey, updatedProgress);
               
-              // Check if course completed and issue certificate
-              if (newCompletedModules.size() == totalModules) {
-                ignore await issueCertificate(caller, courseId);
-              };
+              // Issue certificate
+              ignore await issueCertificate(caller, courseId);
             };
           };
         };
@@ -327,38 +292,6 @@ persistent actor EduverseBackend {
 
   public query func validateAnswers(answers: [Types.UserAnswer], quizQuestions: [Types.QuizQuestion]): async Result.Result<Bool, Text> {
     Quizzes.validateAnswers(answers, quizQuestions)
-  };
-  
-  public shared({ caller }) func getQuizWithValidation(courseId: Nat, moduleId: Nat): async Result.Result<Types.QuizPreview, Text> {
-    // Comprehensive validation
-    if (not isEnrolled(caller, courseId)) {
-      return #err("ENROLLMENT_REQUIRED");
-    };
-
-    // Check if prerequisite modules are completed
-    let progressKey = getUserProgressKey(caller, courseId);
-    switch (userProgress.get(progressKey)) {
-      case null { return #err("NO_PROGRESS_FOUND") };
-      case (?progress) {
-        // Check if previous modules are completed (assuming sequential order)
-        if (moduleId > 1) {
-          // FIXED: Safe subtraction check
-          let prevModule = Nat.sub(moduleId, 1);
-          let prevModuleCompleted = Array.find<Nat>(
-            progress.completedModules,
-            func(m) = m == prevModule
-          );
-          if (prevModuleCompleted == null and prevModule > 0) {
-            return #err("PREREQUISITE_NOT_COMPLETED");
-          };
-        };
-      };
-    };
-
-    switch (Quizzes.getQuizPreview(courseId)) {
-      case null { #err("QUIZ_NOT_FOUND") };
-      case (?preview) { #ok(preview) };
-    }
   };
 
   // === PROGRESS TRACKING ===

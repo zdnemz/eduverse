@@ -422,18 +422,16 @@ export default function LearningPage() {
         setUserProgress(convertedProgress);
       }
 
-      // FIXED: Mengambil quiz results dan mengkonversinya untuk kompatibilitas dengan sidebar
-      const quizResultsData = await actor.getMyBestQuizResult(courseIdNum);
+      const quizResultsData = await actor.getMyQuizResults(courseIdNum);
       const convertedQuizResults = convertBigIntToString(quizResultsData);
 
-      // Konversi ke format yang diharapkan oleh CourseSidebar dengan konversi Principal ke string
       if (convertedQuizResults && Array.isArray(convertedQuizResults)) {
         const compatibleQuizResults: QuizResult[] = convertedQuizResults.map((result: any) => ({
-          moduleId: result.moduleId || 1, // Default ke module 1 jika tidak ada
+          moduleId: result.moduleId || 1,
           score: result.score || 0,
           passed: result.passed || false,
           courseId: result.courseId,
-          userId: result.userId ? result.userId.toString() : currentUserId, // Konversi Principal ke string
+          userId: result.userId ? result.userId.toString() : currentUserId,
           completedAt: result.completedAt,
           answers: result.answers,
         }));
