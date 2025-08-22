@@ -1,14 +1,13 @@
 // hooks/useLearningProgress.ts
-// React hooks for managing learning progress with offline support and real-time updates
-// Enhanced with proper User ID integration from Internet Identity
-// FIXED: Resolved TypeScript errors and improved type safety
+// React hooks untuk mengelola progress pembelajaran dengan dukungan offline dan real-time updates
+// Dioptimalkan dengan integrasi User ID dari Internet Identity
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   ProgressStorageService,
   CourseProgress,
-  LearningProgress, // This is the correct import - represents module progress
+  LearningProgress,
   useProgressStorage,
   useCourseProgress,
   BackgroundSyncService,
@@ -17,7 +16,7 @@ import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 import { getAuthClient } from '@/lib/authClient';
 
-// ===== MAIN LEARNING PROGRESS HOOK =====
+// ===== INTERFACES =====
 
 export interface LearningProgressState {
   // Current state
@@ -70,10 +69,32 @@ export interface LearningProgressActions {
   syncWithBackend: () => Promise<boolean>;
   resetProgress: () => boolean;
   exportProgress: () => string;
-
-  // Refresh data
   refresh: () => Promise<void>;
 }
+
+// ===== UTILITY FUNCTIONS =====
+
+const getCurrentUserId = async (): Promise<string | null> => {
+  try {
+    const authClient = await getAuthClient();
+    const identity = authClient.getIdentity();
+    const principal = identity.getPrincipal();
+
+    if (principal.isAnonymous()) {
+      console.warn('⚠️ User is anonymous, using fallback ID');
+      return `anonymous-${Date.now()}`;
+    }
+
+    const userIdStr = principal.toString();
+    console.log(`✅ Got user ID from Internet Identity: ${userIdStr.slice(0, 20)}...`);
+    return userIdStr;
+  } catch (error) {
+    console.error('❌ Error getting user ID:', error);
+    return `fallback-${Date.now()}`;
+  }
+};
+
+// ===== MAIN LEARNING PROGRESS HOOK =====
 
 export const useLearningProgress = (
   courseId: number,
@@ -81,84 +102,16 @@ export const useLearningProgress = (
   actor: ActorSubclass<_SERVICE> | null,
   providedUserId?: string
 ): [LearningProgressState, LearningProgressActions] => {
-  // State for user ID - this will be the source of truth
+  
+  // State untuk user ID - sumber kebenaran tunggal
   const [currentUserId, setCurrentUserId] = useState<string | null>(providedUserId || null);
 
-  // Storage service refs
+  // Service refs
   const storage = useRef<ProgressStorageService | null>(null);
   const courseProgressHook = useRef<any>(null);
   const backgroundSync = useRef<BackgroundSyncService | null>(null);
 
-  // Initialize storage services when userId is available
-  useEffect(() => {
-    if (currentUserId) {
-      try {
-        // Create user-specific storage service
-        storage.current = useProgressStorage(currentUserId);
-        courseProgressHook.current = useCourseProgress(courseId, currentUserId);
-
-        // Initialize background sync service
-        if (actor) {
-          backgroundSync.current = BackgroundSyncService.getInstance(actor, currentUserId);
-          backgroundSync.current.startSync(5); // Sync every 5 minutes
-        }
-
-        console.log(`✅ Initialized storage services for user: ${currentUserId.slice(0, 20)}...`);
-      } catch (error) {
-        console.error(
-          `❌ Failed to initialize storage for user ${currentUserId.slice(0, 20)}...:`,
-          error
-        );
-        toast.error('Failed to initialize user storage');
-      }
-    }
-
-    return () => {
-      // Cleanup background sync
-      if (backgroundSync.current && currentUserId) {
-        backgroundSync.current.stopSync();
-      }
-    };
-  }, [currentUserId, courseId, actor]);
-
-  // Get user ID from Internet Identity
-  const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    try {
-      const authClient = await getAuthClient();
-      const identity = authClient.getIdentity();
-      const principal = identity.getPrincipal();
-
-      if (principal.isAnonymous()) {
-        console.warn('⚠️  User is anonymous, using fallback ID');
-        return `anonymous-${Date.now()}`;
-      }
-
-      const userIdStr = principal.toString();
-      console.log(`✅ Got user ID from Internet Identity: ${userIdStr.slice(0, 20)}...`);
-      return userIdStr;
-    } catch (error) {
-      console.error('❌ Error getting user ID:', error);
-      return `fallback-${Date.now()}`;
-    }
-  }, []);
-
-  // Initialize user ID
-  useEffect(() => {
-    const initUserId = async () => {
-      if (!currentUserId && !providedUserId) {
-        console.log('🔍 No user ID provided, getting from Internet Identity...');
-        const userId = await getCurrentUserId();
-        setCurrentUserId(userId);
-      } else if (providedUserId && providedUserId !== currentUserId) {
-        console.log(`🔄 Switching to provided user ID: ${providedUserId.slice(0, 20)}...`);
-        setCurrentUserId(providedUserId);
-      }
-    };
-
-    initUserId();
-  }, [providedUserId, currentUserId, getCurrentUserId]);
-
-  // State
+  // State utama
   const [state, setState] = useState<LearningProgressState>({
     currentModuleIndex: 0,
     currentModule: null,
@@ -176,19 +129,60 @@ export const useLearningProgress = (
     statistics: null,
   });
 
-  // Refs for tracking
+  // Refs untuk tracking
   const sessionStartTime = useRef<number>(Date.now());
   const autoSaveInterval = useRef<number | null>(null);
 
-  // Update state when userId changes
+  // ===== INITIALIZATION =====
+
+  // Initialize user ID jika tidak ada
   useEffect(() => {
-    setState((prev) => ({
-      ...prev,
-      userId: currentUserId,
-    }));
+    const initUserId = async () => {
+      if (!currentUserId && !providedUserId) {
+        console.log('🔍 No user ID provided, getting from Internet Identity...');
+        const userId = await getCurrentUserId();
+        setCurrentUserId(userId);
+      } else if (providedUserId && providedUserId !== currentUserId) {
+        console.log(`🔄 Switching to provided user ID: ${providedUserId.slice(0, 20)}...`);
+        setCurrentUserId(providedUserId);
+      }
+    };
+
+    initUserId();
+  }, [providedUserId, currentUserId]);
+
+  // Initialize storage services ketika userId tersedia
+  useEffect(() => {
+    if (currentUserId) {
+      try {
+        storage.current = useProgressStorage(currentUserId);
+        courseProgressHook.current = useCourseProgress(courseId, currentUserId);
+
+        if (actor) {
+          backgroundSync.current = BackgroundSyncService.getInstance(actor, currentUserId);
+          backgroundSync.current.startSync(5);
+        }
+
+        console.log(`✅ Storage services initialized for user: ${currentUserId.slice(0, 20)}...`);
+      } catch (error) {
+        console.error(`❌ Failed to initialize storage for user ${currentUserId.slice(0, 20)}...:`, error);
+        toast.error('Failed to initialize user storage');
+      }
+    }
+
+    return () => {
+      if (backgroundSync.current && currentUserId) {
+        backgroundSync.current.stopSync();
+      }
+    };
+  }, [currentUserId, courseId, actor]);
+
+  // Update state ketika userId berubah
+  useEffect(() => {
+    setState((prev) => ({ ...prev, userId: currentUserId }));
   }, [currentUserId]);
 
-  // Initialize progress data using the user-specific storage
+  // Initialize progress data
   const initializeProgress = useCallback(async () => {
     if (!courseMaterial || !courseId || !storage.current || !currentUserId) {
       console.log('⏳ Waiting for initialization requirements...');
@@ -198,16 +192,11 @@ export const useLearningProgress = (
     setState((prev) => ({ ...prev, isLoading: true }));
 
     try {
-      console.log(
-        `📖 Initializing progress for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-      );
+      console.log(`📖 Initializing progress for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`);
 
-      // Get user-specific course progress
       let courseProgress = courseProgressHook.current.getCourseProgress();
 
-      // Create new progress if none exists
       if (!courseProgress) {
-        console.log(`📝 Creating new course progress for user: ${currentUserId.slice(0, 20)}...`);
         courseProgress = {
           courseId,
           courseName: courseMaterial.title || `Course ${courseId}`,
@@ -220,35 +209,16 @@ export const useLearningProgress = (
           lastAccessedAt: Date.now(),
           isCompleted: false,
         };
-
-        // Save the new progress using user-specific storage
         storage.current.saveCourseProgress(courseProgress);
-      } else {
-        console.log(
-          `📊 Loaded existing progress for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-        );
-
-        // Update total modules if course structure changed
-        if (
-          courseMaterial.modules &&
-          courseProgress.totalModules !== courseMaterial.modules.length
-        ) {
-          courseProgress.totalModules = courseMaterial.modules.length;
-          storage.current.saveCourseProgress(courseProgress);
-          console.log(`🔄 Updated total modules count to ${courseMaterial.modules.length}`);
-        }
       }
 
-      // Get current module
       const currentModule = courseMaterial.modules?.[courseProgress.currentModuleIndex] || null;
       const currentModuleProgress = courseProgress.moduleProgresses[currentModule?.moduleId];
 
-      // Extract completed modules - FIXED: Use LearningProgress type
       const completedModules = Object.values(courseProgress.moduleProgresses ?? {})
         .filter((p): p is LearningProgress => Boolean(p && (p as LearningProgress).isCompleted))
         .map((p) => p.moduleId);
 
-      // Get statistics using user-specific storage
       const statistics = storage.current.getCourseStatistics(courseId);
 
       setState((prev) => ({
@@ -267,7 +237,6 @@ export const useLearningProgress = (
         userId: currentUserId,
       }));
 
-      // Show restored progress message if significant time passed
       if (courseProgress.lastAccessedAt && Date.now() - courseProgress.lastAccessedAt > 300000) {
         const lastAccessed = new Date(courseProgress.lastAccessedAt).toLocaleString();
         toast.success(`Welcome back! Progress restored from ${lastAccessed}`, {
@@ -275,20 +244,15 @@ export const useLearningProgress = (
         });
       }
 
-      console.log(
-        `✅ Progress initialization completed for user: ${currentUserId.slice(0, 20)}...`
-      );
+      console.log(`✅ Progress initialization completed for user: ${currentUserId.slice(0, 20)}...`);
     } catch (error) {
-      console.error(
-        `❌ Error initializing progress for user: ${currentUserId.slice(0, 20)}...:`,
-        error
-      );
+      console.error(`❌ Error initializing progress for user: ${currentUserId.slice(0, 20)}...:`, error);
       setState((prev) => ({ ...prev, isLoading: false }));
       toast.error('Failed to load learning progress');
     }
   }, [courseId, courseMaterial, currentUserId]);
 
-  // Auto-save progress using user-specific storage
+  // Auto-save progress
   const autoSaveProgress = useCallback(() => {
     if (!state.currentModule || state.isLoading || !storage.current || !currentUserId) {
       return;
@@ -296,7 +260,6 @@ export const useLearningProgress = (
 
     const sessionTime = Math.floor((Date.now() - sessionStartTime.current) / 1000);
     if (sessionTime > 30) {
-      // Only save if session is longer than 30 seconds
       courseProgressHook.current.addTimeSpent(
         state.currentModule.moduleId,
         sessionTime,
@@ -304,15 +267,12 @@ export const useLearningProgress = (
       );
       sessionStartTime.current = Date.now();
 
-      // Update state silently
       setState((prev) => ({
         ...prev,
         timeSpent: prev.timeSpent + sessionTime,
       }));
 
-      console.log(
-        `⏱️  Auto-saved ${sessionTime}s for user: ${currentUserId.slice(0, 20)}..., module: ${state.currentModule.moduleId}`
-      );
+      console.log(`⏱️ Auto-saved ${sessionTime}s for user: ${currentUserId.slice(0, 20)}..., module: ${state.currentModule.moduleId}`);
     }
   }, [courseId, state.currentModule, state.isLoading, currentUserId, courseMaterial?.title]);
 
@@ -322,7 +282,7 @@ export const useLearningProgress = (
       clearInterval(autoSaveInterval.current);
     }
 
-    autoSaveInterval.current = window.setInterval(autoSaveProgress, 30000); // Every 30 seconds
+    autoSaveInterval.current = window.setInterval(autoSaveProgress, 30000);
 
     return () => {
       if (autoSaveInterval.current) {
@@ -331,7 +291,7 @@ export const useLearningProgress = (
     };
   }, [autoSaveProgress]);
 
-  // Initialize when user ID is available
+  // Initialize ketika user ID tersedia
   useEffect(() => {
     if (currentUserId && storage.current) {
       initializeProgress();
@@ -341,7 +301,6 @@ export const useLearningProgress = (
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Save final session time
       if (state.currentModule && !state.isLoading && storage.current && currentUserId) {
         const sessionTime = Math.floor((Date.now() - sessionStartTime.current) / 1000);
         if (sessionTime > 0) {
@@ -350,18 +309,14 @@ export const useLearningProgress = (
             sessionTime,
             courseMaterial?.title
           );
-          console.log(
-            `💾 Final save ${sessionTime}s for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-          );
+          console.log(`💾 Final save ${sessionTime}s for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`);
         }
       }
 
-      // Clear intervals
       if (autoSaveInterval.current) {
         clearInterval(autoSaveInterval.current);
       }
 
-      // Stop background sync
       if (backgroundSync.current) {
         backgroundSync.current.stopSync();
       }
@@ -379,14 +334,14 @@ export const useLearningProgress = (
         !storage.current ||
         !currentUserId
       ) {
-        console.warn('⚠️  Invalid module navigation attempt');
+        console.warn('⚠️ Invalid module navigation attempt');
         return;
       }
 
       const module = courseMaterial.modules[index];
       const moduleProgress = state.courseProgress?.moduleProgresses[module.moduleId];
 
-      // Save current session time before switching
+      // Save current session time sebelum pindah
       if (state.currentModule) {
         const sessionTime = Math.floor((Date.now() - sessionStartTime.current) / 1000);
         if (sessionTime > 0) {
@@ -398,13 +353,9 @@ export const useLearningProgress = (
         }
       }
 
-      // Update using user-specific storage
       courseProgressHook.current.setCurrentModule(index, courseMaterial.title);
-
-      // Reset session timer
       sessionStartTime.current = Date.now();
 
-      // Update state
       setState((prev) => ({
         ...prev,
         currentModuleIndex: index,
@@ -414,9 +365,7 @@ export const useLearningProgress = (
       }));
 
       toast.success(`Switched to Module ${index + 1}: ${module.title}`);
-      console.log(
-        `📍 User ${currentUserId.slice(0, 20)}... switched to module ${index + 1} in course ${courseId}`
-      );
+      console.log(`📍 User ${currentUserId.slice(0, 20)}... switched to module ${index + 1} in course ${courseId}`);
     },
     [courseMaterial, state.currentModule, state.courseProgress, courseId, currentUserId]
   );
@@ -440,76 +389,29 @@ export const useLearningProgress = (
   const updateReadingProgress = useCallback(
     (progress: number) => {
       if (!state.currentModule || !storage.current || !currentUserId) {
-        console.warn('⚠️  Cannot update reading progress: missing requirements', {
-          hasCurrentModule: !!state.currentModule,
-          hasStorage: !!storage.current,
-          hasUserId: !!currentUserId,
-        });
+        console.warn('⚠️ Cannot update reading progress: missing requirements');
         return;
       }
 
       const clampedProgress = Math.max(0, Math.min(100, progress));
 
-      // Only update if progress increased
       if (clampedProgress > state.readingProgress) {
-        // Use user-specific storage
         courseProgressHook.current.updateReadingProgress(
           state.currentModule.moduleId,
           clampedProgress,
           courseMaterial?.title
         );
 
-        setState((prev) => ({
-          ...prev,
-          readingProgress: clampedProgress,
-        }));
+        setState((prev) => ({ ...prev, readingProgress: clampedProgress }));
 
-        // Auto-complete if reading progress reaches 100%
-        if (
-          clampedProgress >= 100 &&
-          !state.completedModules.includes(state.currentModule.moduleId)
-        ) {
-          setTimeout(() => {
-            completeCurrentModule();
-          }, 1000);
+        if (clampedProgress >= 100 && !state.completedModules.includes(state.currentModule.moduleId)) {
+          setTimeout(() => completeCurrentModule(), 1000);
         }
 
-        console.log(
-          `📖 Reading progress updated to ${clampedProgress}% for user: ${currentUserId.slice(0, 20)}..., module: ${state.currentModule.moduleId}`
-        );
+        console.log(`📖 Reading progress updated to ${clampedProgress}% for user: ${currentUserId.slice(0, 20)}..., module: ${state.currentModule.moduleId}`);
       }
     },
-    [
-      state.currentModule,
-      state.readingProgress,
-      state.completedModules,
-      courseId,
-      courseMaterial?.title,
-      currentUserId,
-    ]
-  );
-
-  const addTimeSpent = useCallback(
-    (seconds: number) => {
-      if (!state.currentModule || seconds <= 0 || !storage.current || !currentUserId) return;
-
-      // Use user-specific storage
-      courseProgressHook.current.addTimeSpent(
-        state.currentModule.moduleId,
-        seconds,
-        courseMaterial?.title
-      );
-
-      setState((prev) => ({
-        ...prev,
-        timeSpent: prev.timeSpent + seconds,
-      }));
-
-      console.log(
-        `⏱️  Added ${seconds}s time for user: ${currentUserId.slice(0, 20)}..., module: ${state.currentModule.moduleId}`
-      );
-    },
-    [state.currentModule, courseId, courseMaterial?.title, currentUserId]
+    [state.currentModule, state.readingProgress, state.completedModules, courseId, courseMaterial?.title, currentUserId]
   );
 
   const completeCurrentModule = useCallback(async (): Promise<boolean> => {
@@ -523,11 +425,8 @@ export const useLearningProgress = (
     }
 
     try {
-      console.log(
-        `🎯 Completing module ${state.currentModule.moduleId} for user: ${currentUserId.slice(0, 20)}...`
-      );
+      console.log(`🎯 Completing module ${state.currentModule.moduleId} for user: ${currentUserId.slice(0, 20)}...`);
 
-      // Use user-specific storage
       const success = courseProgressHook.current.completeModule(
         state.currentModule.moduleId,
         courseMaterial?.title
@@ -552,13 +451,8 @@ export const useLearningProgress = (
           description: `Great job completing "${state.currentModule.title}"`,
         });
 
-        console.log(
-          `✅ Module ${state.currentModule.moduleId} completed by user: ${currentUserId.slice(0, 20)}...`
-        );
-
-        // Check if all modules completed
         const totalModules = courseMaterial?.modules?.length || 0;
-        const completedCount = state.completedModules.length + 1; // +1 for current module
+        const completedCount = state.completedModules.length + 1;
 
         if (completedCount === totalModules) {
           setTimeout(() => {
@@ -573,34 +467,20 @@ export const useLearningProgress = (
 
       return false;
     } catch (error) {
-      console.error(
-        `❌ Error completing module for user: ${currentUserId.slice(0, 20)}...:`,
-        error
-      );
+      console.error(`❌ Error completing module for user: ${currentUserId.slice(0, 20)}...:`, error);
       toast.error('Failed to complete module');
       return false;
     }
-  }, [
-    state.currentModule,
-    state.completedModules,
-    state.currentModuleIndex,
-    courseId,
-    courseMaterial,
-    goToNextModule,
-    currentUserId,
-  ]);
+  }, [state.currentModule, state.completedModules, courseId, courseMaterial, currentUserId]);
 
+  // Actions lainnya dengan pola yang sama...
   const toggleBookmark = useCallback(
     (moduleId?: number): boolean => {
       const targetModuleId = moduleId || state.currentModule?.moduleId;
       if (!targetModuleId || !storage.current || !currentUserId) return false;
 
       try {
-        // Use user-specific storage
-        const success = courseProgressHook.current.toggleBookmark(
-          targetModuleId,
-          courseMaterial?.title
-        );
+        const success = courseProgressHook.current.toggleBookmark(targetModuleId, courseMaterial?.title);
 
         if (success) {
           setState((prev) => {
@@ -609,26 +489,17 @@ export const useLearningProgress = (
               ? prev.bookmarkedModules.filter((id) => id !== targetModuleId)
               : [...prev.bookmarkedModules, targetModuleId];
 
-            return {
-              ...prev,
-              bookmarkedModules: newBookmarks,
-            };
+            return { ...prev, bookmarkedModules: newBookmarks };
           });
 
           const isBookmarked = !state.bookmarkedModules.includes(targetModuleId);
           toast.success(isBookmarked ? 'Module bookmarked! 📌' : 'Bookmark removed');
-          console.log(
-            `🔖 Bookmark ${isBookmarked ? 'added' : 'removed'} for user: ${currentUserId.slice(0, 20)}..., module: ${targetModuleId}`
-          );
           return isBookmarked;
         }
 
         return false;
       } catch (error) {
-        console.error(
-          `❌ Error toggling bookmark for user: ${currentUserId.slice(0, 20)}...:`,
-          error
-        );
+        console.error(`❌ Error toggling bookmark for user: ${currentUserId.slice(0, 20)}...:`, error);
         toast.error('Failed to toggle bookmark');
         return false;
       }
@@ -642,12 +513,7 @@ export const useLearningProgress = (
       if (!targetModuleId || !storage.current || !currentUserId) return false;
 
       try {
-        // Use user-specific storage
-        const success = courseProgressHook.current.saveNote(
-          targetModuleId,
-          note,
-          courseMaterial?.title
-        );
+        const success = courseProgressHook.current.saveNote(targetModuleId, note, courseMaterial?.title);
 
         if (success) {
           setState((prev) => {
@@ -657,17 +523,10 @@ export const useLearningProgress = (
             } else {
               delete newNotes[targetModuleId];
             }
-
-            return {
-              ...prev,
-              moduleNotes: newNotes,
-            };
+            return { ...prev, moduleNotes: newNotes };
           });
 
           toast.success(note.trim() ? 'Note saved! 📝' : 'Note deleted');
-          console.log(
-            `📝 Note ${note.trim() ? 'saved' : 'deleted'} for user: ${currentUserId.slice(0, 20)}..., module: ${targetModuleId}`
-          );
           return true;
         }
 
@@ -681,12 +540,7 @@ export const useLearningProgress = (
     [state.currentModule, courseId, courseMaterial?.title, currentUserId]
   );
 
-  const deleteNote = useCallback(
-    (moduleId?: number): boolean => {
-      return saveNote('', moduleId);
-    },
-    [saveNote]
-  );
+  const deleteNote = useCallback((moduleId?: number): boolean => saveNote('', moduleId), [saveNote]);
 
   const completeCourse = useCallback(
     async (certificateId?: number): Promise<boolean> => {
@@ -695,7 +549,6 @@ export const useLearningProgress = (
       try {
         console.log(`🎓 Completing course ${courseId} for user: ${currentUserId.slice(0, 20)}...`);
 
-        // Use user-specific storage
         const success = courseProgressHook.current.completeCourse(certificateId);
 
         if (success) {
@@ -703,11 +556,7 @@ export const useLearningProgress = (
             ...prev,
             overallProgress: 100,
             courseProgress: prev.courseProgress
-              ? {
-                  ...prev.courseProgress,
-                  isCompleted: true,
-                  certificateId,
-                }
+              ? { ...prev.courseProgress, isCompleted: true, certificateId }
               : null,
           }));
 
@@ -717,18 +566,12 @@ export const useLearningProgress = (
               : 'Congratulations on completing the course!',
           });
 
-          console.log(
-            `✅ Course ${courseId} completed by user: ${currentUserId.slice(0, 20)}..., certificate: ${certificateId}`
-          );
           return true;
         }
 
         return false;
       } catch (error) {
-        console.error(
-          `❌ Error completing course for user: ${currentUserId.slice(0, 20)}...:`,
-          error
-        );
+        console.error(`❌ Error completing course for user: ${currentUserId.slice(0, 20)}...:`, error);
         toast.error('Failed to complete course');
         return false;
       }
@@ -742,11 +585,8 @@ export const useLearningProgress = (
     setState((prev) => ({ ...prev, isSyncing: true }));
 
     try {
-      console.log(
-        `🔄 Syncing progress for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-      );
+      console.log(`🔄 Syncing progress for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`);
 
-      // Use user-specific background sync service
       const success = await backgroundSync.current.syncWithBackend();
 
       setState((prev) => ({
@@ -757,22 +597,13 @@ export const useLearningProgress = (
 
       if (success) {
         toast.success('Progress synced with server', { duration: 2000 });
-        console.log(
-          `✅ Sync completed for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-        );
       } else {
         toast.error('Sync failed, will retry automatically');
-        console.log(
-          `❌ Sync failed for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-        );
       }
 
       return success;
     } catch (error) {
-      console.error(
-        `❌ Error syncing with backend for user: ${currentUserId.slice(0, 20)}...:`,
-        error
-      );
+      console.error(`❌ Error syncing with backend for user: ${currentUserId.slice(0, 20)}...:`, error);
       setState((prev) => ({ ...prev, isSyncing: false }));
       toast.error('Failed to sync with server');
       return false;
@@ -783,11 +614,6 @@ export const useLearningProgress = (
     if (!storage.current || !currentUserId) return false;
 
     try {
-      console.log(
-        `🗑️  Resetting progress for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-      );
-
-      // Use user-specific storage - only clear this user's progress
       const success = storage.current.clearAllProgress();
 
       if (success) {
@@ -808,22 +634,14 @@ export const useLearningProgress = (
           statistics: null,
         });
 
-        // Reinitialize
         setTimeout(() => initializeProgress(), 500);
-
         toast.success('Progress reset successfully');
-        console.log(
-          `✅ Progress reset for user: ${currentUserId.slice(0, 20)}..., course: ${courseId}`
-        );
         return true;
       }
 
       return false;
     } catch (error) {
-      console.error(
-        `❌ Error resetting progress for user: ${currentUserId.slice(0, 20)}...:`,
-        error
-      );
+      console.error(`❌ Error resetting progress for user: ${currentUserId.slice(0, 20)}...:`, error);
       toast.error('Failed to reset progress');
       return false;
     }
@@ -832,11 +650,8 @@ export const useLearningProgress = (
   const exportProgress = useCallback((): string => {
     if (!storage.current || !currentUserId) return '';
 
-    // Export only this user's progress
     const exportData = storage.current.exportProgress();
-    console.log(`📤 Progress exported for user: ${currentUserId.slice(0, 20)}...`);
-
-    // Create download
+    
     const blob = new Blob([exportData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -850,13 +665,11 @@ export const useLearningProgress = (
   }, [currentUserId]);
 
   const refresh = useCallback(async (): Promise<void> => {
-    const userIdForLog = currentUserId ? currentUserId.slice(0, 20) + '...' : 'unknown';
-    console.log(`🔄 Refreshing progress for user: ${userIdForLog}, course: ${courseId}`);
+    console.log(`🔄 Refreshing progress for user: ${currentUserId?.slice(0, 20)}..., course: ${courseId}`);
     await initializeProgress();
     toast.success('Progress refreshed');
   }, [initializeProgress, currentUserId, courseId]);
 
-  // Return state and actions
   return [
     state,
     {
@@ -864,7 +677,12 @@ export const useLearningProgress = (
       goToNextModule,
       goToPreviousModule,
       updateReadingProgress,
-      addTimeSpent,
+      addTimeSpent: (seconds: number) => {
+        if (!state.currentModule || seconds <= 0 || !storage.current || !currentUserId) return;
+
+        courseProgressHook.current.addTimeSpent(state.currentModule.moduleId, seconds, courseMaterial?.title);
+        setState((prev) => ({ ...prev, timeSpent: prev.timeSpent + seconds }));
+      },
       completeCurrentModule,
       toggleBookmark,
       saveNote,
@@ -878,9 +696,9 @@ export const useLearningProgress = (
   ];
 };
 
-// ===== READING PROGRESS HOOK =====
-// Uses user-specific storage
+// ===== SPECIALIZED HOOKS =====
 
+// Hook untuk reading progress
 export const useReadingProgress = (
   courseId: number,
   moduleId: number,
@@ -892,25 +710,12 @@ export const useReadingProgress = (
   const observerRef = useRef<IntersectionObserver | null>(null);
   const elementsRef = useRef<Set<number>>(new Set());
 
-  // Get user ID from Internet Identity
   useEffect(() => {
     const getUserId = async () => {
-      try {
-        const authClient = await getAuthClient();
-        const identity = authClient.getIdentity();
-        const principal = identity.getPrincipal();
-
-        if (!principal.isAnonymous()) {
-          const userIdStr = principal.toString();
-          setUserId(userIdStr);
-          // Create user-specific storage service
-          storageRef.current = useProgressStorage(userIdStr);
-          console.log(`✅ Reading progress initialized for user: ${userIdStr.slice(0, 20)}...`);
-        } else {
-          console.warn('⚠️  User is anonymous, reading progress will not be saved');
-        }
-      } catch (error) {
-        console.error('❌ Error getting user ID for reading progress:', error);
+      const userIdFromAuth = await getCurrentUserId();
+      setUserId(userIdFromAuth);
+      if (userIdFromAuth) {
+        storageRef.current = useProgressStorage(userIdFromAuth);
       }
     };
 
@@ -918,125 +723,45 @@ export const useReadingProgress = (
   }, []);
 
   useEffect(() => {
-    // Load initial progress
     if (storageRef.current && userId) {
       const courseProgress = storageRef.current.getCourseProgress(courseId);
       const moduleProgress = courseProgress?.moduleProgresses[moduleId];
       if (moduleProgress) {
         setProgress(moduleProgress.readingProgress);
-        console.log(
-          `📖 Loaded reading progress: ${moduleProgress.readingProgress}% for user: ${userId.slice(0, 20)}..., module: ${moduleId}`
-        );
       }
     }
   }, [courseId, moduleId, userId]);
 
-  useEffect(() => {
-    // Setup intersection observer for automatic progress tracking
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const index = parseInt(entry.target.getAttribute('data-progress-index') || '0');
-
-          if (entry.isIntersecting) {
-            elementsRef.current.add(index);
-          } else {
-            elementsRef.current.delete(index);
-          }
-        });
-
-        // Calculate progress based on visible elements
-        const totalElements = document.querySelectorAll('[data-progress-index]').length;
-        if (totalElements > 0 && storageRef.current && userId) {
-          const newProgress = Math.min(100, (elementsRef.current.size / totalElements) * 100);
-
-          if (newProgress > progress) {
-            setProgress(newProgress);
-            storageRef.current.updateReadingProgress(courseId, moduleId, newProgress);
-            onProgressUpdate?.(newProgress);
-
-            console.log(
-              `📖 Auto reading progress updated to ${newProgress}% for user: ${userId.slice(0, 20)}..., module: ${moduleId}`
-            );
-          }
-        }
-      },
-      {
-        threshold: 0.7,
-        rootMargin: '0px 0px -100px 0px',
-      }
-    );
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [courseId, moduleId, progress, userId, onProgressUpdate]);
-
-  const observeElement = useCallback((element: Element, index: number) => {
-    if (observerRef.current) {
-      element.setAttribute('data-progress-index', index.toString());
-      observerRef.current.observe(element);
-    }
-  }, []);
-
   const updateProgress = useCallback(
     (newProgress: number) => {
-      if (!storageRef.current || !userId) {
-        console.warn('⚠️  Cannot update reading progress: no storage or user ID');
-        return;
-      }
+      if (!storageRef.current || !userId) return;
 
       const clampedProgress = Math.max(0, Math.min(100, newProgress));
       if (clampedProgress > progress) {
         setProgress(clampedProgress);
         storageRef.current.updateReadingProgress(courseId, moduleId, clampedProgress);
         onProgressUpdate?.(clampedProgress);
-
-        console.log(
-          `📖 Manual reading progress updated to ${clampedProgress}% for user: ${userId.slice(0, 20)}..., module: ${moduleId}`
-        );
       }
     },
     [courseId, moduleId, progress, userId, onProgressUpdate]
   );
 
-  return {
-    progress,
-    updateProgress,
-    observeElement,
-  };
+  return { progress, updateProgress };
 };
 
-// ===== TIME TRACKING HOOK =====
-// Uses user-specific storage
-
+// Hook untuk time tracking
 export const useTimeTracking = (courseId: number, moduleId: number, isActive: boolean = true) => {
   const [timeSpent, setTimeSpent] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
   const startTimeRef = useRef<number>(Date.now());
   const storageRef = useRef<ProgressStorageService | null>(null);
 
-  // Get user ID from Internet Identity
   useEffect(() => {
     const getUserId = async () => {
-      try {
-        const authClient = await getAuthClient();
-        const identity = authClient.getIdentity();
-        const principal = identity.getPrincipal();
-
-        if (!principal.isAnonymous()) {
-          const userIdStr = principal.toString();
-          setUserId(userIdStr);
-          // Create user-specific storage service
-          storageRef.current = useProgressStorage(userIdStr);
-          console.log(`⏱️  Time tracking initialized for user: ${userIdStr.slice(0, 20)}...`);
-        } else {
-          console.warn('⚠️  User is anonymous, time tracking will not be saved');
-        }
-      } catch (error) {
-        console.error('❌ Error getting user ID for time tracking:', error);
+      const userIdFromAuth = await getCurrentUserId();
+      setUserId(userIdFromAuth);
+      if (userIdFromAuth) {
+        storageRef.current = useProgressStorage(userIdFromAuth);
       }
     };
 
@@ -1044,15 +769,11 @@ export const useTimeTracking = (courseId: number, moduleId: number, isActive: bo
   }, []);
 
   useEffect(() => {
-    // Load initial time
     if (storageRef.current && userId) {
       const courseProgress = storageRef.current.getCourseProgress(courseId);
       const moduleProgress = courseProgress?.moduleProgresses[moduleId];
       if (moduleProgress) {
         setTimeSpent(moduleProgress.timeSpent);
-        console.log(
-          `⏱️  Loaded time spent: ${moduleProgress.timeSpent}s for user: ${userId.slice(0, 20)}..., module: ${moduleId}`
-        );
       }
     }
   }, [courseId, moduleId, userId]);
@@ -1066,30 +787,20 @@ export const useTimeTracking = (courseId: number, moduleId: number, isActive: bo
       if (storageRef.current) {
         const sessionTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
         if (sessionTime >= 30) {
-          // Update every 30 seconds
           storageRef.current.addTimeSpent(courseId, moduleId, sessionTime);
           setTimeSpent((prev) => prev + sessionTime);
           startTimeRef.current = Date.now();
-
-          console.log(
-            `⏱️  Time tracking updated: ${sessionTime}s for user: ${userId.slice(0, 20)}..., module: ${moduleId}`
-          );
         }
       }
     }, 30000);
 
     return () => {
       clearInterval(interval);
-      // Save final session time
       if (storageRef.current) {
         const sessionTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
         if (sessionTime > 0) {
           storageRef.current.addTimeSpent(courseId, moduleId, sessionTime);
           setTimeSpent((prev) => prev + sessionTime);
-
-          console.log(
-            `⏱️  Final time save: ${sessionTime}s for user: ${userId.slice(0, 20)}..., module: ${moduleId}`
-          );
         }
       }
     };
@@ -1098,33 +809,18 @@ export const useTimeTracking = (courseId: number, moduleId: number, isActive: bo
   return { timeSpent };
 };
 
-// ===== PROGRESS STATISTICS HOOK =====
-// Uses user-specific storage
-
+// Hook untuk statistics
 export const useProgressStatistics = (courseId?: number) => {
   const [statistics, setStatistics] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const storageRef = useRef<ProgressStorageService | null>(null);
 
-  // Get user ID from Internet Identity
   useEffect(() => {
     const getUserId = async () => {
-      try {
-        const authClient = await getAuthClient();
-        const identity = authClient.getIdentity();
-        const principal = identity.getPrincipal();
-
-        if (!principal.isAnonymous()) {
-          const userIdStr = principal.toString();
-          setUserId(userIdStr);
-          // Create user-specific storage service
-          storageRef.current = useProgressStorage(userIdStr);
-          console.log(`📊 Statistics initialized for user: ${userIdStr.slice(0, 20)}...`);
-        } else {
-          console.warn('⚠️  User is anonymous, statistics will not be available');
-        }
-      } catch (error) {
-        console.error('❌ Error getting user ID for statistics:', error);
+      const userIdFromAuth = await getCurrentUserId();
+      setUserId(userIdFromAuth);
+      if (userIdFromAuth) {
+        storageRef.current = useProgressStorage(userIdFromAuth);
       }
     };
 
@@ -1136,13 +832,9 @@ export const useProgressStatistics = (courseId?: number) => {
       if (courseId) {
         const courseStats = storageRef.current.getCourseStatistics(courseId);
         setStatistics(courseStats);
-        console.log(
-          `📊 Course statistics refreshed for user: ${userId.slice(0, 20)}..., course: ${courseId}`
-        );
       } else {
         const globalStats = storageRef.current.getLearningStatistics();
         setStatistics(globalStats);
-        console.log(`📊 Global statistics refreshed for user: ${userId.slice(0, 20)}...`);
       }
     }
   }, [courseId, userId]);
@@ -1153,156 +845,7 @@ export const useProgressStatistics = (courseId?: number) => {
     }
   }, [refreshStatistics, userId]);
 
-  return {
-    statistics,
-    refreshStatistics,
-  };
-};
-
-// ===== USER MANAGEMENT HOOKS =====
-// Added new hooks for user management
-
-export const useUserProgressManager = () => {
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [allUsers, setAllUsers] = useState<string[]>([]);
-
-  // Initialize current user
-  useEffect(() => {
-    const initUser = async () => {
-      try {
-        const authClient = await getAuthClient();
-        const identity = authClient.getIdentity();
-        const principal = identity.getPrincipal();
-
-        if (!principal.isAnonymous()) {
-          const userIdStr = principal.toString();
-          setCurrentUserId(userIdStr);
-          console.log(`👤 Current user initialized: ${userIdStr.slice(0, 20)}...`);
-        }
-      } catch (error) {
-        console.error('❌ Error initializing current user:', error);
-      }
-    };
-
-    initUser();
-  }, []);
-
-  const getAllUsers = useCallback(() => {
-    try {
-      // Import StorageManager from progressStorage
-      const { StorageManager } = require('../services/progressStorage');
-      const userIds = StorageManager.getAllUserIds();
-      setAllUsers(userIds);
-      console.log(`👥 Found ${userIds.length} users with stored progress`);
-      return userIds;
-    } catch (error) {
-      console.error('❌ Error getting all users:', error);
-      return [];
-    }
-  }, []);
-
-  const switchUser = useCallback((userId: string) => {
-    setCurrentUserId(userId);
-    console.log(`🔄 Switched to user: ${userId.slice(0, 20)}...`);
-    toast.success(`Switched to user: ${userId.slice(0, 20)}...`);
-  }, []);
-
-  const cleanupInactiveUsers = useCallback(() => {
-    if (!currentUserId) return;
-
-    try {
-      const { StorageManager } = require('../services/progressStorage');
-      StorageManager.cleanupInactiveUsers(currentUserId);
-      // Refresh user list
-      getAllUsers();
-      toast.success('Inactive users cleaned up successfully');
-    } catch (error) {
-      console.error('❌ Error cleaning up inactive users:', error);
-      toast.error('Failed to cleanup inactive users');
-    }
-  }, [currentUserId, getAllUsers]);
-
-  const getStorageUsage = useCallback(() => {
-    try {
-      const { StorageManager } = require('../services/progressStorage');
-      const usage = StorageManager.getStorageUsageSummary();
-      console.log('💾 Storage usage summary:', usage);
-      return usage;
-    } catch (error) {
-      console.error('❌ Error getting storage usage:', error);
-      return null;
-    }
-  }, []);
-
-  useEffect(() => {
-    // Load all users on mount
-    getAllUsers();
-  }, [getAllUsers]);
-
-  return {
-    currentUserId,
-    allUsers,
-    getAllUsers,
-    switchUser,
-    cleanupInactiveUsers,
-    getStorageUsage,
-  };
-};
-
-// ===== MULTI-USER PROGRESS COMPARISON HOOK =====
-
-export const useProgressComparison = (courseId: number) => {
-  const [comparisonData, setComparisonData] = useState<any[]>([]);
-  const { allUsers } = useUserProgressManager();
-
-  const compareProgress = useCallback(() => {
-    const comparisons: any[] = [];
-
-    allUsers.forEach((userId) => {
-      try {
-        const storage = useProgressStorage(userId);
-        const courseProgress = storage.getCourseProgress(courseId);
-        const statistics = storage.getCourseStatistics(courseId);
-
-        if (courseProgress) {
-          comparisons.push({
-            userId: userId.slice(0, 20) + '...',
-            fullUserId: userId,
-            courseName: courseProgress.courseName,
-            overallProgress: courseProgress.overallProgress,
-            completedModules: Object.values(courseProgress.moduleProgresses).filter(
-              (m: LearningProgress) => m.isCompleted
-            ).length,
-            totalModules: courseProgress.totalModules,
-            timeSpent: statistics?.totalTimeSpent || 0,
-            lastAccessed: courseProgress.lastAccessedAt,
-            isCompleted: courseProgress.isCompleted,
-          });
-        }
-      } catch (error) {
-        console.error(`❌ Error getting progress for user ${userId.slice(0, 20)}...:`, error);
-      }
-    });
-
-    // Sort by progress descending
-    comparisons.sort((a, b) => b.overallProgress - a.overallProgress);
-    setComparisonData(comparisons);
-
-    console.log(
-      `📊 Progress comparison loaded for ${comparisons.length} users in course ${courseId}`
-    );
-  }, [allUsers, courseId]);
-
-  useEffect(() => {
-    if (allUsers.length > 0) {
-      compareProgress();
-    }
-  }, [compareProgress, allUsers]);
-
-  return {
-    comparisonData,
-    refreshComparison: compareProgress,
-  };
+  return { statistics, refreshStatistics };
 };
 
 export default useLearningProgress;

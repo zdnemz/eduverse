@@ -155,7 +155,7 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
     }
   };
 
-  // FIXED: Updated submission handler for final quiz
+  // FIXED: Updated submission handler with proper backend format
   const handleSubmit = async () => {
     if (!quiz || !learningService || isSubmitting) return;
 
@@ -164,54 +164,35 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
       setIsTimerActive(false);
       setIsSubmitting(true);
 
-      // Format answers for backend submission
-      const formattedAnswers = answers.map((answer, index) => ({
+      // FIXED: Validate all questions are answered
+      const unansweredQuestions = answers.findIndex((answer) => answer === -1);
+      if (unansweredQuestions !== -1) {
+        toast.warning(`Please answer question ${unansweredQuestions + 1} before submitting`);
+        setIsTimerActive(true);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // FIXED: Format answers exactly as backend expects - simple array format
+      const formattedAnswers = answers.map((selectedAnswer, index) => ({
         questionId: quiz.questions[index].questionId,
-        selectedAnswer: answer,
+        selectedAnswer: selectedAnswer,
       }));
 
-      console.log('Submitting final quiz with parameters:', {
+      console.log('📤 Submitting quiz with formatted answers:', {
         courseId,
-        isFinalQuiz: true,
         answersCount: formattedAnswers.length,
+        answers: formattedAnswers,
       });
 
-      // FIXED: Use submitFinalQuiz method instead of submitQuiz
-      let result;
-      if (typeof learningService.submitFinalQuiz === 'function') {
-        // Use dedicated final quiz method if available
-        result = await learningService.submitFinalQuiz(courseId, formattedAnswers);
-      } else {
-        // Fallback: Use regular submitQuiz with special handling
-        console.log('⚠️ Using fallback submission method');
-
-        // Try to determine moduleId from quiz or use fallback
-        let moduleId = quiz.moduleId || 0;
-
-        // If moduleId is still invalid, try to get from course materials
-        if (!moduleId || moduleId <= 0) {
-          try {
-            const materialsResult = await learningService.getCourseMaterials(courseId);
-            if ('ok' in materialsResult && materialsResult.ok.modules.length > 0) {
-              const lastModule = materialsResult.ok.modules[materialsResult.ok.modules.length - 1];
-              moduleId = Number(lastModule.moduleId);
-              console.log(`Using last module ID as fallback: ${moduleId}`);
-            }
-          } catch (fallbackError) {
-            console.warn('Could not get fallback moduleId, using 1');
-            moduleId = 1; // Ultimate fallback
-          }
-        }
-
-        result = await learningService.submitQuiz(courseId, moduleId, formattedAnswers);
-      }
+      // FIXED: Use the correct submitQuiz method from learningService
+      const result = await learningService.submitQuiz(courseId, formattedAnswers);
 
       if (result && 'ok' in result) {
         console.log('✅ Final quiz submitted successfully:', result.ok);
 
-        // Handle undefined score gracefully
-        const score = result.ok.score !== undefined ? result.ok.score : 0;
-        const passed = result.ok.passed !== undefined ? result.ok.passed : false;
+        const score = result.ok.score || 0;
+        const passed = result.ok.passed || false;
 
         toast.success(`Final quiz completed! Score: ${score}%`, {
           description: passed
@@ -219,8 +200,13 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
             : `You need ${quiz.passingScore || 70}% to pass. You can retake the quiz.`,
         });
 
+        // Call completion handler
         if (onQuizComplete) {
-          onQuizComplete(result.ok);
+          onQuizComplete({
+            ...result.ok,
+            moduleId: 1, // Final quiz module ID
+            courseId: courseId,
+          });
         }
       } else {
         const errorMsg = result && 'err' in result ? result.err : 'Unknown error occurred';
@@ -229,15 +215,18 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
     } catch (error) {
       console.error('❌ Error submitting final quiz:', error);
 
-      // More specific error handling
-      // let errorMessage = 'Failed to submit final quiz';
-      // if (error.message && error.message.includes('Cannot convert undefined to a BigInt')) {
-      //   errorMessage = 'Invalid quiz data - please refresh and try again';
-      // } else if (error.message) {
-      //   errorMessage = `Submission failed: ${error.message}`;
-      // }
+      let errorMessage = 'Failed to submit final quiz';
+      if (error instanceof Error) {
+        if (error.message.includes('answers')) {
+          errorMessage = 'Invalid answer format - please try again';
+        } else if (error.message.includes('enroll')) {
+          errorMessage = 'Please ensure you are enrolled in this course';
+        } else {
+          errorMessage = `Submission failed: ${error.message}`;
+        }
+      }
 
-      // toast.error(errorMessage);
+      toast.error(errorMessage);
       setIsTimerActive(true); // Restart timer on error
     } finally {
       setIsSubmitting(false);
