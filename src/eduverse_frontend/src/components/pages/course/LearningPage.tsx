@@ -317,6 +317,16 @@ export default function LearningPage() {
       let progress = null;
       if (progressResult) {
         progress = convertBigIntToString(progressResult);
+
+        // CRITICAL FIX: Ensure completedModules is always an array
+        if (!progress.completedModules || !Array.isArray(progress.completedModules)) {
+          progress.completedModules = [];
+        }
+
+        // ADDITIONAL FIX: Ensure overallProgress is a number
+        if (typeof progress.overallProgress !== 'number') {
+          progress.overallProgress = 0;
+        }
       }
 
       // Get course materials to know total modules
@@ -327,12 +337,12 @@ export default function LearningPage() {
         totalModules = materials.modules?.length || 0;
       }
 
-      // Calculate values
+      // Calculate values with safe defaults
       const completedModules = progress?.completedModules || [];
       const completedModulesCount = completedModules.length;
       const overallProgress = progress?.overallProgress || 0;
 
-      // Quiz results - FIXED: Handle both single result and array
+      // Quiz results - FIXED: Handle both single result and array with null checks
       const hasQuizResult = !!progress?.quizResult;
       const quizPassed = hasQuizResult ? progress.quizResult.passed || false : false;
       const quizScore = hasQuizResult ? progress.quizResult.score || 0 : 0;
@@ -357,7 +367,19 @@ export default function LearningPage() {
       return fallbackStatus;
     } catch (error) {
       console.error('❌ Error in fallback calculation:', error);
-      return null;
+
+      // FINAL FALLBACK: Return safe minimal status
+      return {
+        isEnrolled: true,
+        totalModules: 0,
+        completedModules: [],
+        completedModulesCount: 0,
+        overallProgress: 0,
+        hasQuizResult: false,
+        quizPassed: false,
+        quizScore: 0,
+        canGetCertificate: false,
+      };
     }
   };
 
@@ -536,6 +558,17 @@ export default function LearningPage() {
       const progressResult = await actor.getMyProgress(courseIdNum);
       if (progressResult) {
         const convertedProgress = convertBigIntToString(progressResult);
+
+        // CRITICAL FIX: Ensure completedModules is always an array
+        if (!convertedProgress.completedModules) {
+          convertedProgress.completedModules = [];
+        }
+
+        // ADDITIONAL FIX: Ensure other required fields have defaults
+        if (typeof convertedProgress.overallProgress !== 'number') {
+          convertedProgress.overallProgress = 0;
+        }
+
         setUserProgress(convertedProgress);
 
         console.log('📈 Progress restored:', {
@@ -548,12 +581,12 @@ export default function LearningPage() {
         if (convertedProgress.quizResult) {
           const singleQuizResult: QuizResult = {
             moduleId: 1, // Default for final quiz
-            score: convertedProgress.quizResult.score,
-            passed: convertedProgress.quizResult.passed,
-            courseId: convertedProgress.quizResult.courseId,
+            score: convertedProgress.quizResult.score || 0,
+            passed: convertedProgress.quizResult.passed || false,
+            courseId: convertedProgress.quizResult.courseId || Number(courseIdNum),
             userId: convertedProgress.quizResult.userId?.toString() || currentUserId,
-            completedAt: convertedProgress.quizResult.completedAt,
-            answers: convertedProgress.quizResult.answers,
+            completedAt: convertedProgress.quizResult.completedAt || Date.now(),
+            answers: convertedProgress.quizResult.answers || [],
           };
           setQuizResults([singleQuizResult]);
           console.log('🎯 Quiz result from progress:', singleQuizResult);
@@ -572,10 +605,10 @@ export default function LearningPage() {
                 moduleId: result.moduleId || 1,
                 score: result.score || 0,
                 passed: result.passed || false,
-                courseId: result.courseId,
+                courseId: result.courseId || Number(courseIdNum),
                 userId: result.userId?.toString() || currentUserId,
-                completedAt: result.completedAt,
-                answers: result.answers,
+                completedAt: result.completedAt || Date.now(),
+                answers: result.answers || [],
               }));
               setQuizResults(compatibleResults);
               console.log('🎯 Quiz results from endpoint:', compatibleResults.length);
@@ -588,9 +621,34 @@ export default function LearningPage() {
             setQuizResults([]);
           }
         }
+      } else {
+        // CRITICAL FIX: Handle case when no progress exists yet
+        console.log('📝 No existing progress found - initializing empty progress');
+        const emptyProgress = {
+          userId: currentUserId,
+          courseId: Number(courseIdNum),
+          completedModules: [],
+          quizResult: null,
+          overallProgress: 0,
+          lastAccessed: Date.now(),
+        };
+        setUserProgress(emptyProgress);
+        setQuizResults([]);
       }
     } catch (error) {
       console.error('❌ Error restoring progress:', error);
+
+      // FALLBACK: Create safe empty state
+      console.log('🔄 Creating fallback empty progress state...');
+      const fallbackProgress = {
+        userId: currentUserId,
+        courseId: Number(courseIdNum),
+        completedModules: [],
+        quizResult: null,
+        overallProgress: 0,
+        lastAccessed: Date.now(),
+      };
+      setUserProgress(fallbackProgress);
       setQuizResults([]);
     }
   };
