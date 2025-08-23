@@ -34,8 +34,6 @@ import {
   LearningService,
   useLearningService,
   EnhancedCourseQuiz,
-  EnhancedQuizResult,
-  CourseCompletionStatus,
   BackendCompletionStatus, // Added this import
 } from '@/services/learningService';
 import { Certificate as FrontendCertificate } from '@/types/certificate';

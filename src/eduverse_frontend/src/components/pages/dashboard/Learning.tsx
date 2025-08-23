@@ -14,6 +14,24 @@ import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 import CourseIntroModal from '../course/CourseIntroductionModal';
 
+// ADDED: Helper function untuk konversi BigInt (sama seperti di LearningPage.tsx)
+const convertBigIntToString = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return Number(obj);
+  if (Array.isArray(obj)) return obj.map(convertBigIntToString);
+  if (typeof obj === 'object') {
+    if (obj.toString && typeof obj.toString === 'function' && obj._arr) {
+      return obj.toString();
+    }
+    const converted: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      converted[key] = convertBigIntToString(value);
+    }
+    return converted;
+  }
+  return obj;
+};
+
 const getDifficultyText = (difficulty: any): string => {
   if ('Beginner' in difficulty) return 'Beginner';
   if ('Intermediate' in difficulty) return 'Intermediate';
@@ -77,11 +95,26 @@ export default function Learning({ onViewAll }: LearningProps) {
 
   const courses = useCourse(actor!);
 
+  // FIXED: Konversi BigInt sebelum menggunakan course data
   useEffect(() => {
     if (courses.length > 0) {
-      const coursesWithProgress = courses
+      console.log('🔄 Converting courses from backend...', courses.length);
+
+      // CRITICAL: Konversi BigInt terlebih dahulu
+      const convertedCourses = courses.map((course) => {
+        const converted = convertBigIntToString(course);
+        console.log('📚 Course converted:', {
+          id: converted.id,
+          type: typeof converted.id,
+          title: converted.title,
+        });
+        return converted;
+      });
+
+      const coursesWithProgress = convertedCourses
         .map((course, index) => ({
           ...course,
+          id: Number(course.id), // ENSURE: ID adalah number
           progress: Math.floor(Math.random() * 85) + 15,
           completedLessons: Math.floor(Number(course.totalLessons) * (Math.random() * 0.8 + 0.2)),
           nextLesson: getNextLessonForCourse(course.category),
@@ -89,6 +122,7 @@ export default function Learning({ onViewAll }: LearningProps) {
         .filter((course) => (course.progress || 0) > 0)
         .slice(0, 2);
 
+      console.log('✅ Courses with progress ready:', coursesWithProgress);
       setRecentCourses(coursesWithProgress);
     }
   }, [courses]);
@@ -108,11 +142,20 @@ export default function Learning({ onViewAll }: LearningProps) {
     return nextLessons[category] || 'Getting Started';
   };
 
+  // FIXED: Enhanced course click handler dengan logging
   const handleCourseClick = (course: ExtendedCourseInfo) => {
+    console.log('🎯 Course clicked:', {
+      id: course.id,
+      type: typeof course.id,
+      title: course.title,
+      rawCourse: course,
+    });
+
     setSelectedCourse(course);
     setShowIntroModal(true);
   };
 
+  // FIXED: Enhanced start learning dengan proper ID handling
   const handleStartLearning = async () => {
     if (!selectedCourse) {
       toast.error('Course not selected');
@@ -121,10 +164,27 @@ export default function Learning({ onViewAll }: LearningProps) {
 
     try {
       startLoading();
+
+      // CRITICAL: Ensure course ID is properly converted
+      const courseId = Number(selectedCourse.id);
+
+      console.log('🚀 Starting learning:', {
+        selectedCourse: selectedCourse.title,
+        originalId: selectedCourse.id,
+        convertedId: courseId,
+        navigateTo: `/learn/${courseId}`,
+      });
+
+      if (isNaN(courseId) || courseId <= 0) {
+        console.error('❌ Invalid course ID:', selectedCourse.id);
+        toast.error('Invalid course ID. Please try again.');
+        return;
+      }
+
       toast.success(`Starting ${selectedCourse.title}`);
-      navigate(`/learn/${selectedCourse.id.toString()}`);
+      navigate(`/learn/${courseId}`);
     } catch (error) {
-      console.error('Error starting course:', error);
+      console.error('❌ Error starting course:', error);
       toast.error('Failed to start course');
     } finally {
       stopLoading();

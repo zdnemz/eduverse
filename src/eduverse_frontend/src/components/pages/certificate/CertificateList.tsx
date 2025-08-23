@@ -283,7 +283,7 @@ export default function CertificateList({ onBack }: CertificateListProps) {
                   </div>
 
                   {/* Actions */}
-                  <div className="card-actions mt-6 justify-end gap-2">
+                  <div className="card-actions mt-6 justify-center gap-2">
                     <button
                       onClick={() => handleViewDetails(certificate)}
                       className="btn btn-outline btn-sm"
@@ -291,16 +291,6 @@ export default function CertificateList({ onBack }: CertificateListProps) {
                       <Eye className="h-4 w-4" />
                       Details
                     </button>
-
-                    {certificate.metadata?.image && (
-                      <button
-                        onClick={() => handleViewCertificate(certificate)}
-                        className="btn btn-primary btn-sm"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        View
-                      </button>
-                    )}
 
                     <div className="dropdown dropdown-end">
                       <label tabIndex={0} className="btn btn-ghost btn-sm">
