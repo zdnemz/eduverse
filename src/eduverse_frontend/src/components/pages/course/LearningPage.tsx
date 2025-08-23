@@ -1,6 +1,6 @@
-// FIXED LearningPage.tsx - Masalah Quiz & Certificate Diselesaikan
+// FIXED LearningPage.tsx - Navigation to Certificate Routes
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { motion, useScroll } from 'framer-motion';
 import { toast } from 'sonner';
@@ -9,7 +9,7 @@ import { getAuthClient } from '@/lib/authClient';
 import { ActorSubclass } from '@dfinity/agent';
 import { _SERVICE } from 'declarations/eduverse_backend/eduverse_backend.did';
 
-// Components (same imports)
+// Components (removed CertificateDisplay import)
 import LearningHeader from './components/LearningHeader';
 import CourseSidebar from './components/CourseSidebar';
 import ModuleHeader from './components/ModuleHeader';
@@ -18,7 +18,7 @@ import ModuleNavigation from './components/ModuleNavigation';
 import FinalQuizSection from './components/FinalQuizSection';
 import LearningProgressSection from './components/LearningProgressSection';
 import AccessDenied from './components/AccessDenied';
-import CertificateDisplay from './components/CertificateDisplay';
+// REMOVED: import CertificateDisplay from '../certificate/CertificateDisplay';
 import QuizComponent from './components/QuizComponent ';
 
 // Services
@@ -137,8 +137,11 @@ const convertBackendCertificate = (backendCert: BackendCertificate): FrontendCer
 
 export default function LearningPage() {
   const { courseId } = useParams<{ courseId: string }>();
+  const navigate = useNavigate(); // ADDED: Navigation hook
   const { startLoading, stopLoading } = useLoading('learning-page');
-  const [currentView, setCurrentView] = useState<'learning' | 'quiz' | 'certificate'>('learning');
+
+  // REMOVED: Certificate view state since we're using routes now
+  const [currentView, setCurrentView] = useState<'learning' | 'quiz'>('learning');
   const [scrolled, setScrolled] = useState(false);
   const { scrollYProgress } = useScroll();
 
@@ -657,7 +660,8 @@ export default function LearningPage() {
       // Check if user already has certificate
       if (userCertificate) {
         console.log('📜 Certificate already exists:', userCertificate.tokenId);
-        setCurrentView('certificate');
+        // FIXED: Navigate to certificate route instead of setting view
+        navigate(`/certificate/${userCertificate.tokenId}`);
         toast.success('🎉 Certificate found!');
         return;
       }
@@ -679,7 +683,8 @@ export default function LearningPage() {
                 console.log('📜 Certificate generated:', courseCert.tokenId);
                 const convertedCert = convertBackendCertificate(courseCert);
                 setUserCertificate(convertedCert);
-                setCurrentView('certificate');
+                // FIXED: Navigate to certificate detail route
+                navigate(`/certificate/${convertedCert.tokenId}`);
                 toast.success('🎉 Congratulations! Your certificate has been generated!');
               } else {
                 toast.warning(
@@ -878,6 +883,27 @@ export default function LearningPage() {
     }
   };
 
+  // FIXED: Certificate navigation handlers
+  const handleViewCertificate = () => {
+    if (userCertificate) {
+      navigate(`/certificate/${userCertificate.tokenId}`);
+    } else {
+      // Navigate to general certificate page to show all user's certificates
+      navigate('/certificate');
+    }
+  };
+
+  const handleViewAllCertificates = () => {
+    navigate('/certificate');
+  };
+
+  const handleShareCertificate = () => {
+    if (userCertificate) {
+      // Open certificate in new tab for sharing
+      window.open(`/certificate/${userCertificate.tokenId}`, '_blank');
+    }
+  };
+
   // Computed values
   const currentModule = learningState.currentModule;
   const allLearningCompleted =
@@ -912,28 +938,7 @@ export default function LearningPage() {
     );
   }
 
-  // Certificate View
-  if (currentView === 'certificate' && userCertificate) {
-    return (
-      <CertificateDisplay
-        certificate={userCertificate}
-        currentUserId={currentUserId}
-        onViewCertificate={() => {
-          if (userCertificate) {
-            window.open(`/certificate/${userCertificate.tokenId}`, '_blank');
-          }
-        }}
-        onViewMaterials={() => {
-          setCurrentView('learning');
-          learningActions.goToModule(0);
-        }}
-        onChooseNewCourse={() => {
-          window.location.href = '/dashboard';
-        }}
-        userName={persistentUserState?.userName || userProfile?.name || 'Distinguished Learner'}
-      />
-    );
-  }
+  // REMOVED: Certificate view - now handled by routes
 
   // Quiz View
   if (currentView === 'quiz' && currentQuiz) {
@@ -1029,10 +1034,10 @@ export default function LearningPage() {
                       </div>
                     </div>
 
-                    {/* Action Buttons */}
+                    {/* FIXED: Action Buttons with navigation */}
                     {userCertificate && (
                       <button
-                        onClick={() => setCurrentView('certificate')}
+                        onClick={handleViewCertificate}
                         className="rounded-lg bg-gradient-to-r from-yellow-500 to-yellow-600 px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:scale-105"
                       >
                         View Certificate
@@ -1107,7 +1112,7 @@ export default function LearningPage() {
                 persistentUserState={persistentUserState}
               />
 
-              {/* FIXED: Enhanced Certificate Achievement Banner */}
+              {/* FIXED: Enhanced Certificate Achievement Banner with Route Navigation */}
               {userCertificate && (
                 <motion.div
                   className="mt-6 animate-pulse rounded-2xl border-2 border-yellow-400/50 bg-gradient-to-r from-slate-800/80 to-slate-700/80 p-8 text-center shadow-xl backdrop-blur-sm"
@@ -1146,27 +1151,34 @@ export default function LearningPage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-center gap-4">
+                    {/* FIXED: Navigate to certificate routes */}
                     <button
-                      onClick={() => setCurrentView('certificate')}
+                      onClick={handleViewCertificate}
                       className="rounded-lg bg-gradient-to-r from-yellow-500 to-yellow-600 px-6 py-3 font-medium text-white transition-all duration-200 hover:scale-105"
                     >
                       🎓 View Your Certificate
                     </button>
                     <button
-                      onClick={() => {
-                        if (userCertificate) {
-                          window.open(`/certificate/${userCertificate.tokenId}`, '_blank');
-                        }
-                      }}
+                      onClick={() => navigate('/dashboard')}
                       className="rounded-lg border border-yellow-400/50 bg-slate-700/60 px-6 py-3 font-medium text-gray-200 transition-all duration-200 hover:scale-105"
                     >
-                      🔗 Share Certificate
+                      🏠 Back to Dashboard
                     </button>
                     <button
                       onClick={() => learningActions.goToModule(0)}
                       className="rounded-lg border border-gray-400 bg-slate-700/60 px-6 py-3 font-medium text-gray-200 transition-all duration-200 hover:scale-105"
                     >
                       📚 Review Course
+                    </button>
+                  </div>
+
+                  {/* FIXED: Additional Certificate Actions */}
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <button
+                      onClick={handleViewAllCertificates}
+                      className="rounded-lg border border-gray-500/50 bg-slate-700/40 px-4 py-2 text-sm font-medium text-gray-300 transition-all duration-200 hover:scale-105"
+                    >
+                      📜 View All Certificates
                     </button>
                   </div>
                 </motion.div>
@@ -1292,6 +1304,21 @@ export default function LearningPage() {
                     >
                       Manual Cert Check
                     </button>
+                    {/* FIXED: Add navigation test buttons */}
+                    <button
+                      onClick={() => navigate('/certificate')}
+                      className="rounded bg-purple-600 px-3 py-1 text-xs text-white hover:bg-purple-700"
+                    >
+                      Test Cert Page
+                    </button>
+                    {userCertificate && (
+                      <button
+                        onClick={() => navigate(`/certificate/${userCertificate.tokenId}`)}
+                        className="rounded bg-orange-600 px-3 py-1 text-xs text-white hover:bg-orange-700"
+                      >
+                        Test Cert Detail
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               )}

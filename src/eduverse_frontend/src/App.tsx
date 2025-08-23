@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Home from 'pages/home/Index';
 import Dashboard from 'pages/dashboard';
 import ProfileSetup from 'pages/profile/setup';
-import Certificate from 'pages/certificate';
+import { CertificatePage, CertificateDetailRoute } from 'pages/certificate';
 import { AllCoursesPage, LearningRoute } from 'pages/course';
 
 export default function App() {
@@ -15,7 +15,8 @@ export default function App() {
         <Route path="/courses" element={<AllCoursesPage />} />
         <Route path="/learn/:courseId" element={<LearningRoute />} />
         <Route path="/profile/setup" element={<ProfileSetup />} />
-        <Route path="/certificate" element={<Certificate />} />
+        <Route path="/certificate" element={<CertificatePage />} />
+        <Route path="/certificate/:id" element={<CertificateDetailRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
