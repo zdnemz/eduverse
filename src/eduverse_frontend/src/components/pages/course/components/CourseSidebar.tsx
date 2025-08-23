@@ -24,16 +24,9 @@ interface LearningState {
   };
 }
 
-interface QuizResult {
-  moduleId: number;
-  score: number;
-  passed: boolean;
-}
-
 interface CourseSidebarProps {
   modules: Module[];
   learningState: LearningState;
-  quizResults: QuizResult[];
   allLearningCompleted: boolean;
   isLoadingQuiz: boolean;
   persistentUserState: PersistentUserState | null;
@@ -49,7 +42,6 @@ const truncateTitle = (title: string, maxLength: number = 30) => {
 const CourseSidebar: React.FC<CourseSidebarProps> = ({
   modules,
   learningState,
-  quizResults,
   allLearningCompleted,
   isLoadingQuiz,
   persistentUserState,
@@ -111,12 +103,6 @@ const CourseSidebar: React.FC<CourseSidebarProps> = ({
               const isCompleted = learningState.completedModules.includes(moduleId);
               const isCurrent = learningState.currentModuleIndex === index;
 
-              // Enhanced quiz status from Motoko backend
-              const moduleQuizResult = quizResults.find((r) => r.moduleId === moduleId);
-              const hasQuiz = moduleQuizResult !== undefined;
-              const hasPassedQuiz = moduleQuizResult ? moduleQuizResult.passed : false;
-              const quizScore = moduleQuizResult ? moduleQuizResult.score : 0;
-
               return (
                 <button
                   key={moduleId}
@@ -133,27 +119,19 @@ const CourseSidebar: React.FC<CourseSidebarProps> = ({
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    {/* Enhanced Status Icon with Quiz Info */}
+                    {/* Simplified Status Icon - no quiz logic */}
                     <div
                       className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                        hasPassedQuiz
-                          ? 'bg-yellow-500 text-white' // Passed quiz
-                          : hasQuiz && isCompleted
-                            ? 'bg-orange-500 text-white' // Has quiz but not taken
-                            : isCompleted
-                              ? 'bg-green-500 text-white' // Completed, no quiz
-                              : isCurrent && isUnlocked
-                                ? 'border-white bg-white/20 text-white'
-                                : isUnlocked
-                                  ? 'border-gray-400 text-gray-400'
-                                  : 'border-gray-500 text-gray-500'
+                        isCompleted
+                          ? 'bg-green-500 text-white'
+                          : isCurrent && isUnlocked
+                            ? 'border-white bg-white/20 text-white'
+                            : isUnlocked
+                              ? 'border-gray-400 text-gray-400'
+                              : 'border-gray-500 text-gray-500'
                       }`}
                     >
-                      {hasPassedQuiz ? (
-                        <Star size={12} />
-                      ) : hasQuiz && isCompleted ? (
-                        <Brain size={12} />
-                      ) : isCompleted ? (
+                      {isCompleted ? (
                         <CheckCircle size={12} />
                       ) : !isUnlocked ? (
                         <Lock size={10} />
@@ -162,7 +140,7 @@ const CourseSidebar: React.FC<CourseSidebarProps> = ({
                       )}
                     </div>
 
-                    {/* Content with Quiz Status */}
+                    {/* Simplified Content - no quiz status */}
                     <div className="min-w-0 flex-1">
                       <div className="text-sm leading-tight font-semibold" title={module.title}>
                         {truncateTitle(module.title, 30)}
@@ -179,10 +157,6 @@ const CourseSidebar: React.FC<CourseSidebarProps> = ({
                         }`}
                       >
                         Module {index + 1}
-                        {hasPassedQuiz && <span className="ml-1">⭐ Quiz: {quizScore}%</span>}
-                        {hasQuiz && !hasPassedQuiz && isCompleted && (
-                          <span className="ml-1 text-orange-400">🧠 Quiz Available</span>
-                        )}
                       </div>
                     </div>
                   </div>

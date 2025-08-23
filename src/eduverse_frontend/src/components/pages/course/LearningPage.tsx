@@ -1258,7 +1258,6 @@ export default function LearningPage() {
           <CourseSidebar
             modules={courseMaterial.modules}
             learningState={learningState}
-            quizResults={quizResults}
             allLearningCompleted={allLearningCompleted}
             isLoadingQuiz={isLoadingQuiz}
             persistentUserState={persistentUserState}
