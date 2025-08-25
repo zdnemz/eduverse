@@ -176,10 +176,22 @@ module {
         case (?p) p.totalCoursesCompleted + 1; 
         case null 1; 
       };
+      totalQuizzesPassed = switch (existingProfile) { 
+        case (?p) p.totalQuizzesPassed; 
+        case null 0; 
+      };
+      averageQuizScore = switch (existingProfile) { 
+        case (?p) p.averageQuizScore; 
+        case null 0.0; 
+      };
       certificates = switch (existingProfile) { case (?p) p.certificates; case null [] };
       achievements = switch (existingProfile) { 
         case (?p) Array.append(p.achievements, [courseName]); 
         case null [courseName]; 
+      };
+      learningStreak = switch (existingProfile) { 
+        case (?p) p.learningStreak; 
+        case null 0; 
       };
     };
     profiles.put(principal, updatedProfile);
@@ -194,11 +206,23 @@ module {
       email = switch (existingProfile) { case (?p) p.email; case null null };
       joinedAt = switch (existingProfile) { case (?p) p.joinedAt; case null Time.now() };
       totalCoursesCompleted = switch (existingProfile) { case (?p) p.totalCoursesCompleted; case null 0 };
+      totalQuizzesPassed = switch (existingProfile) { 
+        case (?p) p.totalQuizzesPassed; 
+        case null 0; 
+      };
+      averageQuizScore = switch (existingProfile) { 
+        case (?p) p.averageQuizScore; 
+        case null 0.0; 
+      };
       certificates = switch (existingProfile) { 
         case (?p) Array.append(p.certificates, [certificateId]); 
         case null [certificateId]; 
       };
       achievements = switch (existingProfile) { case (?p) p.achievements; case null [] };
+      learningStreak = switch (existingProfile) { 
+        case (?p) p.learningStreak; 
+        case null 0; 
+      };
     };
     profiles.put(principal, updatedProfile);
   };
@@ -231,6 +255,7 @@ module {
         courseId = courseId;
         courseName = courseName;
         completedAt = currentTimeNat; 
+        finalScore = 85; // Default final score, should be passed as parameter in real implementation
         issuer = "Eduverse Academy";
         certificateHash = "cert_" # Nat.toText(nextCertificateId) # "_" # Principal.toText(caller);
         metadata = {
@@ -258,6 +283,14 @@ module {
           case (?p) p.totalCoursesCompleted + 1; 
           case null 1; 
         };
+        totalQuizzesPassed = switch (existingProfile) { 
+          case (?p) p.totalQuizzesPassed + 1; 
+          case null 1; 
+        };
+        averageQuizScore = switch (existingProfile) { 
+          case (?p) p.averageQuizScore; 
+          case null 85.0; 
+        };
         certificates = switch (existingProfile) { 
           case (?p) Array.append(p.certificates, [nextCertificateId]); 
           case null [nextCertificateId]; 
@@ -265,6 +298,10 @@ module {
         achievements = switch (existingProfile) { 
           case (?p) Array.append(p.achievements, [courseName]); 
           case null [courseName]; 
+        };
+        learningStreak = switch (existingProfile) { 
+          case (?p) p.learningStreak + 1; 
+          case null 1; 
         };
       };
       userProfiles.put(caller, updatedProfile);

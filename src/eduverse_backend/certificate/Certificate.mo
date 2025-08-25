@@ -14,7 +14,7 @@ module {
     private var certificates = Storage.createEmptyCertificates();
     private var nextCertificateId : Nat = 1;
 
-    public func claimCertificate(caller: Principal, courseName: Text, courseId: Nat): Result.Result<Types.Certificate, Text> {
+    public func claimCertificate(caller: Principal, courseName: Text, courseId: Nat, finalScore: Nat): Result.Result<Types.Certificate, Text> {
       if (Principal.isAnonymous(caller)) {
         return #err("Anonymous users cannot claim certificates");
       };
@@ -27,6 +27,7 @@ module {
         courseId = courseId;
         courseName = courseName;
         completedAt = currentTime;
+        finalScore = finalScore; // Added missing field
         issuer = "Eduverse Academy";
         certificateHash = "cert_" # Nat.toText(nextCertificateId) # "_" # Principal.toText(caller);
         metadata = {
@@ -35,7 +36,8 @@ module {
           image = "https://eduverse.academy/certificates/" # Nat.toText(nextCertificateId) # ".png";
           attributes = [
             { trait_type = "Course"; value = courseName },
-            { trait_type = "Completion Date"; value = Nat.toText(Int.abs(currentTime) / 1000000000) }
+            { trait_type = "Completion Date"; value = Nat.toText(Int.abs(currentTime) / 1000000000) },
+            { trait_type = "Final Score"; value = Nat.toText(finalScore) } // Added score to metadata
           ];
         };
       };
