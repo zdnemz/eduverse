@@ -1,13 +1,12 @@
 import { motion } from 'framer-motion';
 import { useRefContext } from '@/contexts/RefContext';
 import { MOTION_TRANSITION } from '@/constants/motion';
-import { cn } from '@/libs/utils';
+import { cn } from '@/lib/utils';
 import { BackgroundWithDots } from '@/components/Background';
-import { useAuth } from '@/contexts/AuthContext';
+import { LoginButton } from '@/components/Auth';
 
 export default function Hero() {
   const { scrollToRef } = useRefContext();
-  const { login } = useAuth();
 
   return (
     <section className="relative flex min-h-screen w-full items-center justify-center">
@@ -54,9 +53,7 @@ export default function Hero() {
           viewport={{ once: true, amount: 0.2 }}
           className="flex gap-x-4"
         >
-          <button onClick={login} className="btn btn-primary rounded-lg">
-            {'Start Learning Now'}
-          </button>
+          <LoginButton className="btn-primary">{'Start Learning Now'}</LoginButton>
           <button
             onClick={() => scrollToRef('howItWorksSection')}
             className="btn btn-secondary rounded-lg"
@@ -76,9 +73,9 @@ export default function Hero() {
       </div>
 
       <div className="hidden w-1/2 items-center justify-center lg:flex">
-        <div className="bg-base-100 flex h-[450px] w-[450px] items-center justify-center rounded-full shadow-2xl">
+        {/* <div className="bg-base-100 flex h-[450px] w-[450px] items-center justify-center rounded-full shadow-2xl">
           <p className="text-base-content/50 text-2xl font-bold">Illustration here</p>
-        </div>
+        </div> */}
       </div>
     </section>
   );

@@ -2,12 +2,23 @@ import * as React from 'react';
 
 export interface ModalProps {
   state: [boolean, React.Dispatch<React.SetStateAction<boolean>>];
-  message?: string;
-  handle: () => void;
+  onProcessMessage?: string;
+  handle: () => Promise<void>;
+  header?: string;
+  description?: string;
+  name: string;
 }
 
-export default function Modal({ state, message, handle }: ModalProps) {
+export default function Modal({
+  state,
+  onProcessMessage,
+  header,
+  description,
+  handle,
+  name,
+}: ModalProps) {
   const [show, setShow] = state;
+  const [loading, setLoading] = React.useState(false);
 
   if (!show) return null;
 
@@ -17,17 +28,20 @@ export default function Modal({ state, message, handle }: ModalProps) {
         className="modal-box bg-base-300 shadow-primary space-y-6 p-6 shadow"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold">Konfirmasi Logout</h3>
-        <p>Are you sure want to logout?</p>
+        <h3 className="font-semibold">{header || 'Dialog'}</h3>
+        {description && <p>{description}</p>}
         <div className="modal-action">
           <button
             onClick={async () => {
+              setLoading(true);
               await handle();
+              setLoading(false);
               setShow(false);
             }}
             className="btn btn-error"
+            disabled={loading}
           >
-            {message || 'Confirm'}
+            {loading ? onProcessMessage || 'Working in...' : name || 'Confirm'}
           </button>
           <button onClick={() => setShow(false)} className="btn">
             Cancel

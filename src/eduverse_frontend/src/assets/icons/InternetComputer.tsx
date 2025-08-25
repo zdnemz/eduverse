@@ -1,6 +1,7 @@
 import { IconProps } from '@/types/icon';
+import React from 'react';
 
-export default function InternetComputer({ className, ...props }: IconProps) {
+function InternetComputer({ className, ...props }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -59,3 +60,5 @@ export default function InternetComputer({ className, ...props }: IconProps) {
     </svg>
   );
 }
+
+export default React.memo(InternetComputer);

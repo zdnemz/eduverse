@@ -1,17 +1,7 @@
 import * as React from 'react';
-import { scrollToRefHelper, focusRefHelper, getRefHelper } from '@/libs/refs';
 
-type DynamicRefs = Record<string, React.RefObject<HTMLElement | null>>;
-
-export type RefContextType = {
-  refs: DynamicRefs;
-  registerRef: (key: string) => React.RefObject<HTMLElement | null>;
-  scrollToRef: (key: string) => void;
-  focusRef: (key: string) => void;
-  getRef: (key: string) => React.RefObject<HTMLElement | null> | null;
-};
-
-const RefContext = React.createContext<RefContextType | null>(null);
+import { DynamicRefs, RefContext } from '@/contexts/RefContext';
+import { scrollToRefHelper, focusRefHelper, getRefHelper } from '@/lib/refs';
 
 export function RefProvider({ children }: { children: React.ReactNode }) {
   const refs = React.useRef<DynamicRefs>({});
@@ -36,12 +26,4 @@ export function RefProvider({ children }: { children: React.ReactNode }) {
       {children}
     </RefContext.Provider>
   );
-}
-
-export function useRefContext() {
-  const context = React.useContext(RefContext);
-  if (!context) {
-    throw new Error('useRefContext must be used within RefProvider');
-  }
-  return context;
 }

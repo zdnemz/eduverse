@@ -1,25 +1,100 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { createBackendActor } from '@/libs/actor';
 import { BackgroundWithDots } from '@/components/Background';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { MOTION_TRANSITION } from '@/constants/motion';
-import Loading from '@/components/Loading';
+import Footer from '@/components/Footer';
+import Navbar from '@/components/Navbar';
 import RootLayout from '@/components/layouts/RootLayout';
+import { withAuth } from '@/hoc/withAuth';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useActor, usePrincipal, useIsAuthenticated } from '@/stores/auth-store';
+import { getCertificate } from '@/services/auth-service';
+import { actor as createActor } from '@/lib/actor';
+import { getAuthClient } from '@/lib/authClient';
 
-export default function CertificatePage() {
-  const { principal } = useAuth();
-  const [certificate, setCertificate] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+import CertificateList from './CertificateList';
+import CertificateDisplay from './CertificateDisplay';
+
+export const CertificatePage = withAuth(function CertificatePage() {
   const navigate = useNavigate();
 
+  const handleBack = () => {
+    navigate('/dashboard');
+  };
+
+  return (
+    <RootLayout
+      className="min-h-screen w-full *:py-6 [&>*:first-child]:pt-24 [&>*:last-child]:pb-24"
+      header={<Navbar />}
+      footer={<Footer />}
+      background={<BackgroundWithDots />}
+    >
+      <CertificateList onBack={handleBack} />
+    </RootLayout>
+  );
+});
+
+export const CertificateDetailRoute = withAuth(function CertificateDetailRoute() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const principal = usePrincipal();
+  const actor = useActor();
+  const isAuthenticated = useIsAuthenticated();
+
+  const [certificate, setCertificate] = useState<any>(null);
+  const [userName, setUserName] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [localActor, setLocalActor] = useState<any>(null);
+
+  // Initialize actor
+  useEffect(() => {
+    const initializeActor = async () => {
+      if (actor) {
+        setLocalActor(actor);
+        return;
+      }
+
+      if (isAuthenticated && principal && !actor) {
+        try {
+          const client = await getAuthClient();
+          const identity = client.getIdentity();
+          const newActor = await createActor(identity);
+          setLocalActor(newActor);
+        } catch (error) {
+          console.error('Failed to recreate actor:', error);
+        }
+      }
+    };
+
+    initializeActor();
+  }, [actor, isAuthenticated, principal]);
+
+  // Fetch certificate data
   useEffect(() => {
     const fetchCertificate = async () => {
+      if (!localActor || !id) return;
+
       try {
-        const actor = await createBackendActor();
-        const result = await actor.getCertificate();
-        setCertificate(result);
+        setLoading(true);
+        const result = await getCertificate(localActor);
+
+        if (result) {
+          const certificates = Array.isArray(result) ? result : [result];
+          const foundCertificate = certificates.find((cert) => cert.tokenId === id);
+
+          if (foundCertificate) {
+            setCertificate(foundCertificate);
+          }
+        }
+
+        // Fetch user profile for name
+        try {
+          const profileResult = await localActor.getMyProfile();
+          if (profileResult && profileResult[0]) {
+            const profile = profileResult[0];
+            setUserName(profile.name || '');
+          }
+        } catch (error) {
+          console.log('Could not fetch user profile:', error);
+        }
       } catch (error) {
         console.error('Error fetching certificate:', error);
       } finally {
@@ -28,80 +103,64 @@ export default function CertificatePage() {
     };
 
     fetchCertificate();
-  }, []);
+  }, [localActor, id]);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+    }
+  }, [isAuthenticated, navigate]);
+
+  const handleViewCertificate = () => {
+    if (certificate?.metadata?.image) {
+      window.open(certificate.metadata.image, '_blank');
+    }
+  };
+
+  const handleViewMaterials = () => {
+    navigate(`/courses/${certificate?.courseId}`);
+  };
+
+  const handleChooseNewCourse = () => {
+    navigate('/courses');
+  };
+
+  if (loading) {
+    return (
+      <RootLayout footer={<Footer />} background={<BackgroundWithDots />}>
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="loading loading-spinner loading-lg"></div>
+        </div>
+      </RootLayout>
+    );
+  }
+
+  if (!certificate) {
+    return (
+      <RootLayout footer={<Footer />} background={<BackgroundWithDots />}>
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <h2 className="mb-4 text-2xl font-bold">Certificate not found</h2>
+            <button onClick={() => navigate('/certificate')} className="btn btn-primary">
+              Back to Certificates
+            </button>
+          </div>
+        </div>
+      </RootLayout>
+    );
+  }
 
   return (
-    <RootLayout protected>
-      <section className="relative min-h-screen overflow-hidden px-4 py-12">
-        <BackgroundWithDots />
-        <motion.div
-          className="relative z-10 mx-auto max-w-2xl text-center"
-          initial={{ opacity: 0, translateY: 20, filter: 'blur(10px)' }}
-          animate={{ opacity: 1, translateY: 0, filter: 'blur(0px)' }}
-          transition={{ ...MOTION_TRANSITION, delay: 0.2 }}
-        >
-          <h1 className="text-primary text-4xl font-bold">
-            Start exploring and earn your certificate!
-          </h1>
-          <p className="text-base-content/80 mt-2 text-lg">
-            Complete the learning modules to receive your certificate.
-          </p>
-        </motion.div>
-
-        <motion.div
-          className="relative z-10 mx-auto mt-10 max-w-xl"
-          initial={{ opacity: 0, translateY: 30, filter: 'blur(10px)' }}
-          animate={{ opacity: 1, translateY: 0, filter: 'blur(0px)' }}
-          transition={{ ...MOTION_TRANSITION, delay: 0.4 }}
-        >
-          {loading ? (
-            <div className="relative z-10 flex min-h-[300px] items-center justify-center">
-              <Loading />
-            </div>
-          ) : !certificate ? (
-            <motion.div
-              className="card bg-base-200 p-6 text-center shadow-md"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ ...MOTION_TRANSITION, delay: 0.6 }}
-            >
-              <p className="text-warning text-xl font-semibold">
-                You haven’t earned a certificate yet.
-              </p>
-              <p className="text-base-content/70 mt-2 text-base">
-                Join the journey and get certified!
-              </p>
-            </motion.div>
-          ) : (
-            <motion.div
-              className="card bg-base-200 p-6 shadow-lg"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ ...MOTION_TRANSITION, delay: 0.6 }}
-            >
-              <h2 className="mb-4 text-2xl font-bold">🎓 Certificate of Completion</h2>
-              <p className="text-lg">Awarded to:</p>
-              <p className="text-xl font-semibold">{certificate.name}</p>
-              <p className="text-md text-muted">Principal ID: {principal}</p>
-              <p className="mt-4">Course: {certificate.course}</p>
-              <p>
-                Issued At: {new Date(Number(certificate.issued_at) / 1_000_000).toLocaleString()}
-              </p>
-            </motion.div>
-          )}
-
-          <motion.div
-            className="mt-6 text-center"
-            initial={{ opacity: 0, translateY: 20 }}
-            animate={{ opacity: 1, translateY: 0 }}
-            transition={{ ...MOTION_TRANSITION, delay: 0.8 }}
-          >
-            <button onClick={() => navigate('/')} className="btn btn-outline btn-primary">
-              Return to Home Page
-            </button>
-          </motion.div>
-        </motion.div>
-      </section>
+    <RootLayout background={<BackgroundWithDots />}>
+      <CertificateDisplay
+        certificate={certificate}
+        onViewCertificate={handleViewCertificate}
+        onViewMaterials={handleViewMaterials}
+        onChooseNewCourse={handleChooseNewCourse}
+        userName={userName}
+        currentUserId={principal || ''}
+      />
     </RootLayout>
   );
-}
+});

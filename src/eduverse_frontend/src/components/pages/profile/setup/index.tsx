@@ -1,78 +1,90 @@
 import { motion } from 'framer-motion';
 import { MOTION_TRANSITION } from '@/constants/motion';
-import { useAuth } from '@/contexts/AuthContext';
-import { useState, useEffect } from 'react';
-import InfoModal from '@/components/ui/infoModal';
-import Loading from '@/components/Loading';
 import { useNavigate } from 'react-router-dom';
-import { createActorWithRetry, callWithRetry, isIdentityValid, handleAuthError } from '@/libs/auth';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { toast } from 'sonner';
 
-export default function ProfileSetupPage() {
-  const { identity, principal } = useAuth();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [showInfoModal, setShowInfoModal] = useState(false);
-  const [modalMessage, setModalMessage] = useState(
-    'Please fill in both your name and email address to continue'
-  );
-  const [transitionLoading, setTransitionLoading] = useState(false);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+import { useLoading } from '@/hooks/useLoading';
+import { retry } from '@/lib/utils';
+import { withAuth } from '@/hoc/withAuth';
+import { useActor, useAuthActions } from '@/stores/auth-store';
+import { updateUser } from '@/services/auth-service';
+
+const profileSetupSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100)
+    .regex(
+      /^[a-zA-Z\s\-'\.]+$/,
+      'Name can only contain letters, spaces, hyphens, apostrophes, and periods'
+    )
+    .transform((val) => val.trim()),
+  email: z
+    .email('Please enter a valid email address')
+    .max(254)
+    .transform((val) => val.trim().toLowerCase()),
+});
+
+type ProfileSetupFormData = z.infer<typeof profileSetupSchema>;
+
+export default withAuth(function () {
+  const actor = useActor();
   const navigate = useNavigate();
+  const { startLoading, stopLoading } = useLoading('profile-setup');
 
-  useEffect(() => {
-    const checkAuth = () => {
-      if (isIdentityValid(identity, principal) && principal) {
-        setIsAuthReady(true);
-      } else if (principal === '2vxsx-fae' || !principal) {
-        console.warn('User is anonymous or no principal, need to login first');
-        navigate('/');
-      }
-    };
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting, isValid, isDirty },
+    clearErrors,
+    reset,
+  } = useForm<ProfileSetupFormData>({
+    resolver: zodResolver(profileSetupSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+    },
+  });
 
-    checkAuth();
-  }, [identity, principal, navigate]);
+  const onSubmit = async (data: ProfileSetupFormData) => {
+    if (!actor) return;
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (name.trim() === '' || email.trim() === '') {
-      setModalMessage('Please fill in both your name and email address to continue');
-      setShowInfoModal(true);
-      return;
-    }
-
-    if (!isIdentityValid(identity, principal)) {
-      setModalMessage('Authentication error. Please refresh the page and try logging in again.');
-      setShowInfoModal(true);
-      return;
-    }
+    clearErrors();
+    startLoading();
 
     try {
-      setTransitionLoading(true);
+      await retry(async () => {
+        return await updateUser(actor, data);
+      });
 
-      const actor = await createActorWithRetry(identity!);
+      toast.success('Profile setup complete!', {
+        description: `Welcome, ${data.name}!`,
+      });
 
-      await callWithRetry(() => actor.updateUser(name.trim(), [email.trim()]), 3, 1500);
-
-      console.log('Profile setup successful');
-
-      navigate('/dashboard');
+      reset();
+      navigate('/dashboard', { replace: true });
     } catch (error) {
-      console.error('Failed to save user:', error);
+      console.log(error);
 
-      const errorMessage = handleAuthError(error);
-      setModalMessage(errorMessage);
-      setShowInfoModal(true);
+      toast.error('Failed to setup profile', {
+        description: 'Something went wrong. Please try again later.',
+      });
     } finally {
-      setTransitionLoading(false);
+      stopLoading();
     }
   };
 
-  if (!isAuthReady) {
-    return <Loading />;
-  }
-
-  if (transitionLoading) return <Loading />;
+  const onError = (formErrors: Record<string, { message?: string }>) => {
+    const firstError = Object.values(formErrors)[0];
+    if (firstError?.message) {
+      toast.error('Form validation error', {
+        description: firstError.message,
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -90,7 +102,7 @@ export default function ProfileSetupPage() {
           </p>
         </div>
 
-        <form onSubmit={handleRegister} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit(onSubmit, onError)} className="flex flex-col gap-4" noValidate>
           <div>
             <label className="label">
               <span className="label-text">Full Name</span>
@@ -98,12 +110,11 @@ export default function ProfileSetupPage() {
             <input
               type="text"
               placeholder="Enter your full name"
-              className="input input-bordered w-full"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              disabled={transitionLoading}
+              className={`input input-bordered w-full ${errors.name ? 'input-error border-error' : ''}`}
+              disabled={isSubmitting}
+              {...register('name')}
             />
+            {errors.name && <span className="text-error text-sm">{errors.name.message}</span>}
           </div>
 
           <div>
@@ -113,22 +124,21 @@ export default function ProfileSetupPage() {
             <input
               type="email"
               placeholder="Enter your email address"
-              className="input input-bordered w-full"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={transitionLoading}
+              className={`input input-bordered w-full ${errors.email ? 'input-error border-error' : ''}`}
+              disabled={isSubmitting}
+              {...register('email')}
             />
+            {errors.email && <span className="text-error text-sm">{errors.email.message}</span>}
           </div>
 
           <button
             type="submit"
-            className="btn btn-primary mt-4 w-full"
-            disabled={transitionLoading}
+            className={`btn btn-primary mt-4 w-full ${!isValid || !isDirty ? 'btn-disabled' : ''}`}
+            disabled={isSubmitting || !isValid || !isDirty}
           >
-            {transitionLoading ? (
+            {isSubmitting ? (
               <>
-                <span className="loading loading-spinner loading-sm"></span>
+                <span className="loading loading-spinner loading-sm" aria-hidden="true"></span>
                 Setting up...
               </>
             ) : (
@@ -143,12 +153,6 @@ export default function ProfileSetupPage() {
           </p>
         </div>
       </motion.div>
-
-      <InfoModal
-        state={[showInfoModal, setShowInfoModal]}
-        title="Profile Setup"
-        message={modalMessage}
-      />
     </div>
   );
-}
+});

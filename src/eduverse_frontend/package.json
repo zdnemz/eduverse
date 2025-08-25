@@ -8,13 +8,15 @@
     "start": "vite --port 3000",
     "prebuild": "npm run format && dfx generate",
     "build": "tsc && vite build",
-    "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\""
+    "format": "prettier --write \"src/**/*.{json,js,jsx,ts,tsx,css,scss}\"",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
   },
   "dependencies": {
     "@dfinity/agent": "^2.1.3",
     "@dfinity/auth-client": "^2.1.3",
     "@dfinity/candid": "^2.1.3",
     "@dfinity/principal": "^2.1.3",
+    "@hookform/resolvers": "^5.2.1",
     "@tailwindcss/vite": "^4.1.11",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.6",
@@ -23,8 +25,11 @@
     "react-dom": "^18.2.0",
     "react-helmet-async": "^2.0.5",
     "react-router-dom": "^7.7.0",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
-    "tailwindcss": "^4.1.11"
+    "tailwindcss": "^4.1.11",
+    "zod": "^4.0.14",
+    "zustand": "^5.0.7"
   },
   "devDependencies": {
     "@types/node": "^24.0.15",
